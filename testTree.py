@@ -1,10 +1,10 @@
 from sumTree import SumTree, SumTreeNode
 import json
-from Generator_vllm import Generator
+from Generator_gpt import Generator
 import Generator_utils
 
 
-def test(generator, text):
+def test(generator: Generator, text):
     sumTree = SumTree(text, generator)
     print("==========Info==========")
     sumTree.info()
@@ -39,6 +39,20 @@ def test(generator, text):
         # Test dump
         root = sumTree.getRoot()
         Generator_utils.dump(path, root.getSourceText(), question, answer)
+        print("=====Test mapReduce=====")
+        mr_answer = generator.mapReduce(root.getSourceSplitText(), question)
+        Generator_utils.dump(path, root.getSourceText(), question, mr_answer)
+        print(mr_answer)
+        #Generator_utils.dump(path, mr)
+        print("=====Test refine=====")
+        rf_answer = generator.refine(root.getSourceSplitText(), question)
+        Generator_utils.dump(path, root.getSourceText(), question, rf_answer)
+        print(rf_answer)
+        print("=====Test mapRank=====")
+        mk_answer = generator.mapRerank(root.getSourceSplitText(), question)
+        Generator_utils.dump(path, root.getSourceText(), question, mk_answer)
+        print(mk_answer)
+
 
 
 if __name__ == '__main__':
@@ -53,4 +67,4 @@ if __name__ == '__main__':
             # Process each line in the JSONL file
             obj = json.loads(line)
             text = obj['text']
-            test(generator, text)
+            if i==3: test(generator, text)

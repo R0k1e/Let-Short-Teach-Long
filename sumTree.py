@@ -1,6 +1,81 @@
 from langchain_text_splitters import TokenTextSplitter
 #from Summariser_vllm import Summariser
 
+
+class SumTreeNode:
+    def __init__(self, summariser):
+        self.__summarisation = None
+        self.__children = []
+        self.__parent = None
+        self.__summariser = summariser
+        self.__level = 0
+        self.__index = 0
+        self.__sourceTextArr = []
+        self.__tree= None
+
+    # summarise the text
+    def summarise(self, text):
+        self.__summarisation = self.__summariser.sum(text)
+
+    # return the summarisation
+    def getSummarisation(self):
+        return self.__summarisation
+    
+    # obtain the children of the node
+    def getChildren(self):
+        return self.__children
+    
+    def setParent(self, parent):
+        self.__parent = parent
+
+    def getLevel(self):
+        return self.__level
+    
+    def getIndex(self):
+        return self.__index
+    
+    # obatin all the children summarisation
+    def getChildrenSummarisation(self):
+        text=""
+        for child in self.__children:
+            text+=child.getSummarisation()
+        
+        return text
+    
+    def getChildrenSize(self):
+        return len(self.__children)
+    
+    def getSourceTextArr(self):
+        return self.__sourceTextArr
+
+    def setPosition(self, level, index):
+        self.__level = level
+        self.__index = index
+    
+    def setSourceText(self, sourceText):
+        self.__sourceText = sourceText
+
+    def getParent(self):
+        return self.__parent
+    
+    def setChildren(self, children):
+        self.__children = children
+
+    def getSourceText(self):      
+        print(f"Source text of node {self.__level} {self.__index}:")
+        print(self.__sourceTextArr)
+        text = ""
+        for source in self.__sourceTextArr:
+            text+=self.__tree.getTextArray()[source]
+        return text
+    
+    def getSourceSplitText(self):
+        texts = [self.__tree.getTextArray()[source] for source in self.__sourceTextArr]
+        return texts
+    
+    def setTree(self, tree):
+        self.__tree = tree
+
 class SumTree:
     def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3):
         # self.text = text # save memory -- for efficiency
@@ -134,78 +209,18 @@ class SumTree:
             current_level += 1
         return None
 
-    def getRoot(self):
+    def getRoot(self) -> SumTreeNode:
         return self.__root
     
     def getTextArray(self):
         return self.__textArray
-
-class SumTreeNode:
-    def __init__(self, summariser):
-        self.__summarisation = None
-        self.__children = []
-        self.__parent = None
-        self.__summariser = summariser
-        self.__level = 0
-        self.__index = 0
-        self.__sourceTextArr = []
-        self.__tree= None
-
-    # summarise the text
-    def summarise(self, text):
-        self.__summarisation = self.__summariser.sum(text)
-
-    # return the summarisation
-    def getSummarisation(self):
-        return self.__summarisation
     
-    # obtain the children of the node
-    def getChildren(self):
-        return self.__children
-    
-    def setParent(self, parent):
-        self.__parent = parent
-
-    def getLevel(self):
-        return self.__level
-    
-    def getIndex(self):
-        return self.__index
-    
-    # obatin all the children summarisation
-    def getChildrenSummarisation(self):
-        text=""
-        for child in self.__children:
-            text+=child.getSummarisation()
+    def getSourceSplitText(self, nodes : list[SumTreeNode]) -> list[str]:
+        textArr = []
+        for node in nodes:
+            arr = node.getSourceTextArr()
+            for i in arr:
+                if i not in textArr:
+                    textArr.append(i)
         
-        return text
-    
-    def getChildrenSize(self):
-        return len(self.__children)
-    
-    def getSourceTextArr(self):
-        return self.__sourceTextArr
-
-    def setPosition(self, level, index):
-        self.__level = level
-        self.__index = index
-    
-    def setSourceText(self, sourceText):
-        self.__sourceText = sourceText
-
-    def getParent(self):
-        return self.__parent
-    
-    def setChildren(self, children):
-        self.__children = children
-
-    def getSourceText(self):      
-        print(f"Source text of node {self.__level} {self.__index}:")
-        print(self.__sourceTextArr)
-        text = ""
-        for source in self.__sourceTextArr:
-            text+=self.__tree.getTextArray()[source]
-        return text
-    
-    def setTree(self, tree):
-        self.__tree = tree
+        return [self.__textArray[i] for i in textArr]

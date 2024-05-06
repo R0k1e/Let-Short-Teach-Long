@@ -1,4 +1,4 @@
-**#Requirements**
+***#Requirements***
 
 ```
 pip install langchain-text-splitters tiktoken
@@ -18,14 +18,29 @@ pip install vllm
 
 * @Function: `sum`, summarise designate text
   * @Para: `text`, the text to be summarised
+  * @Return: summary : `str`
   * Prompt needs to be confirmed
 * @Function: `ask`, ask a question based on given text
   * @Para: `summary`, the text to be questioned
+  * @Return: question : `str`
   * Prompt needs to be confirmed
 * @Function: `answer`, answer the question based on the given context
   * @Para: `context`
   * @Para: `question`
+  * @Return: answer : `str`
   * Prompt needs to be confirmed
+* @Function: `mapReduce`, answer the question based on the given context in mapReduce way
+  * @Para: `context`
+  * @Para: `question`
+  * @Return: answer : `str`
+* @Function: `refine`, answer the question based on the given context in refine way
+  * @Para: `context`
+  * @Para: `question`
+  * @Return: answer : `str`, now it contains intermediate data
+* @Function: `mapRerank`, answer the question based on the given context in mapRerank way
+  * @Para: `context`
+  * @Para: `question`
+  * @Return: answer : `str`, now it contains intermediate data
 
 ***#Generator_utils.py***
 
@@ -36,8 +51,11 @@ pip install vllm
   * @Para: `text`
   * @Para: `question`
   * @Para: `answer`
+* @Function: `docParser`, transform a str list into a Document list
+  * @Para: `docs`, the list to be transformed
+  * @Return: a Document list : `list[Document]`
 
-**#sumTree.py**
+***#sumTree.py***
 
 *@Class: SumTree*
 
@@ -48,20 +66,31 @@ pip install vllm
   * @Para: `summariser`, a generator
   * @Para: `chunk_size`, the size you want the chunk to be. Default: 2K
   * @Para: `children_group_capacity`, the capacity you want the group to be. Default: 3
-* @Method: `getText`, get the original long text
-* @Method: ` levelOrderTraversal`, traverse the tree in level order
-* @Method: `nodeGraph`, draw a diagram of the entire tree
-* @Method: `info`, print necessary information of the entire tree
-* @Method: `getNode`, obtain a designate node
+* @Function: `getText`, get the original long text
+  * @Return: original text : `str`
+* @Function: `levelOrderTraversal`, traverse the tree in level order
+* @Function: `nodeGraph`, draw a diagram of the entire tree
+* @Function: `info`, print necessary information of the entire tree
+* @Function: `getNode`, obtain a designate node
   * @Para: `level`
   * @Para: `index`
-* @Method: `getRoot`
-* @Method: `getTextArray`
+  * @Return: node : `SumTreeNode`
+* @Function: `getRoot`
+  * @Return: root : `SumTreeNode`
+* @Function: `getTextArray`
+  * @Return: original text list : `list[str]`
+* @Function: `getSourceSplitText`, get source text of nodes and return in list with *no repetitions*
+  * @Para: `nodes` : `list[SumTreeNode]`, a list of nodes
+  * @Return: source text list : `list[str]`
 
 *@Class: SumTreeNode*
 
 ​	Class `SumTreeNode` is a node in a `SumTree`.
 
 * @Init
-* @Method: `getChildrenSummarisation`, get all summaries from children
-* @Method: `getSourceText`, get source text of this node
+* @Function: `getChildrenSummarisation`, get all summaries from children
+  * @Return: summary : `str`
+* @Function: `getSourceText`, get source text of this node
+  * @Return: source text : `str`
+* @Function: `getSourceSplitText`, get source text of this node in list
+  * @Return: source text list : `list[str]`
