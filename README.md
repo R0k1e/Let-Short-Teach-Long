@@ -54,6 +54,12 @@ pip install vllm
 * @Function: `docParser`, transform a str list into a Document list
   * @Para: `docs`, the list to be transformed
   * @Return: a Document list : `list[Document]`
+* @Function: `tokenLength`, get the length of a given text
+  * @Para: `text`, the input text
+  * Return: length : `int`
+* @Function: `getPrompt`, get the prompt based on a given task
+  * @Para: `task`, a task in(identifyType, metaQuestion, summarise, ask, complicate, score, answer)
+  * @Return: prompt: `str`
 
 ***#sumTree.py***
 

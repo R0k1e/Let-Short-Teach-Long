@@ -1,4 +1,5 @@
 from langchain_text_splitters import TokenTextSplitter
+import random
 #from Summariser_vllm import Summariser
 
 
@@ -15,7 +16,7 @@ class SumTreeNode:
 
     # summarise the text
     def summarise(self, text):
-        self.__summarisation = self.__summariser.sum(text)
+        self.__summarisation = self.__summariser.sum(self.__tree.type, text)
 
     # return the summarisation
     def getSummarisation(self):
@@ -51,9 +52,6 @@ class SumTreeNode:
     def setPosition(self, level, index):
         self.__level = level
         self.__index = index
-    
-    def setSourceText(self, sourceText):
-        self.__sourceText = sourceText
 
     def getParent(self):
         return self.__parent
@@ -80,6 +78,7 @@ class SumTree:
     def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3):
         # self.text = text # save memory -- for efficiency
         self.__summariser = summariser
+        self.type=""
         self.__textArray=[]
         self.__chunk_size = chunk_size # define the granularity of the summarisation
         self.__childern_group_capacity = children_group_capacity # define the number of children to be grouped together
@@ -91,7 +90,7 @@ class SumTree:
     
     # chunk the text
     def __chunk(self, text, overlap=0):
-        text_splitter = TokenTextSplitter(chunk_size=self.__chunk_size, chunk_overlap=overlap) # TODO: encoding method
+        text_splitter = TokenTextSplitter(model_name="gpt-3.5-turbo", chunk_size=self.__chunk_size, chunk_overlap=overlap) # TODO: encoding method
         texts = text_splitter.split_text(text)
         print("=====Chunk successfully!=====")
         print(f"=====Chunk amount: {len(texts)}=====")
@@ -101,13 +100,18 @@ class SumTree:
     def __build(self, text):
         chunks = self.__chunk(text)
         self.__textArray=chunks
+        try:
+            self.type = self.__summariser.identifyType(random.choice(chunks))
+        except Exception as e:
+            print(e)
+            self.type = "text"
         children=[] # list of children
         for i, chunk in enumerate(chunks):
             print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
             child = SumTreeNode(self.__summariser)
+            child.setTree(self)
             child.summarise(chunk)
             child.getSourceTextArr().append(i)
-            child.setTree(self)
             children.append(child)
         parents = self.__group(children)
         self.__height+=1
@@ -158,6 +162,18 @@ class SumTree:
             for child in children:
                 queue.append(child)
     
+    def levelOrderForDump(self):
+        queue = [self.__root]
+        result = {"Height": self.__height, "Type": self.type, "Chunk size": self.__chunk_size, "Children group capacity": self.__childern_group_capacity}
+        while queue:
+            node : SumTreeNode = queue.pop(0)
+            result[f"LEVEL{node.getLevel()} NODE{node.getIndex()}"] = node.getSummarisation()
+            children = node.getChildren()
+            for child in children:
+                queue.append(child)
+        
+        return result
+    
     # print the tree structure
     def nodeGraph(self):
         print("=====Node Graph=====")
@@ -184,6 +200,7 @@ class SumTree:
     # print the information of the tree
     def info(self):
         print(f"Height: {self.__height}")
+        print(f"Type: {self.type}")
         print(f"Chunk size: {self.__chunk_size}")
         print(f"Children group capacity: {self.__childern_group_capacity}")
         print(f"Text length: {len(self.getText())}")

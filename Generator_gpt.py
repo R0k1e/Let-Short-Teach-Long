@@ -1,43 +1,37 @@
-from langchain_community.llms import VLLM
 from langchain_core.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
 from langchain.chains import MapReduceDocumentsChain, ReduceDocumentsChain, RefineDocumentsChain, MapRerankDocumentsChain
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.output_parsers.regex import RegexParser
 import Generator_utils
+from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from GenerateFailedException import GenerateFailedException
-import Generator_utils
 import os, re
 import random
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
+os.environ['OPENAI_API_KEY'] = ''
+os.environ['OPENAI_API_BASE'] = ''
+
 
 class Generator:
     def __init__(
             self,
-            model="/data/public/wangshuo/LongContext/model/THUDM/LongAlign-13B-64k",
-            num_gpus=2
+            model="gpt-3.5-turbo-1106",
         ):
 
-        llm = VLLM(
-            model=model,
-            trust_remote_code=True,  # mandatory for hf models
-            tensor_parallel_size=num_gpus,
-            top_k=10,
-            top_p=0.95,
-            temperature=0.8
-        )
+        llm = ChatOpenAI(temperature=0, model_name=model)
+
 
         self.__llm = llm
-        self.__queue = []
         print("=====Create a summariser successfully!=====")
 
 
     def sum(self, type, text):
         promptTemplate = Generator_utils.getPrompt("sum")
         prompt = PromptTemplate.from_template(promptTemplate)
-        llm_chain = prompt | self.__llm 
+        outputParser = StrOutputParser()
+        llm_chain = prompt | self.__llm | outputParser
         try: 
             sum = llm_chain.invoke({"type": type,"context": text})
         except Exception as e:
@@ -54,7 +48,8 @@ class Generator:
         comprehensions = Generator_utils.getPrompt("comprehension")
         comprehension = random.choice(comprehensions)
         prompt = PromptTemplate.from_template(promptTemplate)
-        llm_chain = prompt | self.__llm 
+        outputParser = StrOutputParser()
+        llm_chain = prompt | self.__llm | outputParser
         try:
             question = llm_chain.invoke({"questionCategory": questionCategory, "comprehension": comprehension, "context": context})
         except Exception as e:
@@ -63,17 +58,26 @@ class Generator:
         print(question)
         print("=====Ask successfully!=====")
         return {"question":question, "questionCategory":questionCategory, "comprehension":comprehension}
-
     
     # def answer(self, context, question):
-    #     promptTemplate = Generator_utils.getPrompt("answer")
+    #     promptTemplate = """
+    #     "{context}"
+    #     Based on the above context, please answer the following question:
+    #     "{question}"
+    #     ANSWER:"""
     #     prompt = PromptTemplate.from_template(promptTemplate)
-    #     llm_chain = prompt | self.__llm
-    #     answer = llm_chain.invoke({"question": question, "context": context})
+    #     outputParser = StrOutputParser()
+    #     llm_chain = prompt | self.__llm | outputParser
+    #     try:
+    #         answer = llm_chain.invoke({"question": question, "context": context})
+    #     except Exception as e:
+    #         print(e)
+    #         raise GenerateFailedException("answer")
     #     print(answer)
     #     print("=====Answer successfully!=====")
     #     return answer
 
+    
     # def mapReduce(self, context, question):
     #     question=f"{question}\nHelpful Answer:"
     #     map_template = """The following is a summary of a part of a document:
@@ -122,10 +126,10 @@ class Generator:
     #         verbose=True
     #     )
     #     context = Generator_utils.docParser(context)
-    #     #outputParser = StrOutputParser()
-    #     chain = map_reduce_chain
+    #     outputParser = StrOutputParser()
+    #     chain = map_reduce_chain | outputParser
     #     try:
-    #         result = chain.run(context)
+    #         result = chain.invoke(context)
     #     except Exception as e:
     #         print(e)
     #         raise GenerateFailedException("mapReduce")
@@ -144,7 +148,7 @@ class Generator:
     #     # The prompt here should take as an input variable the
     #     # `document_variable_name`
     #     prompt = PromptTemplate.from_template(
-    #         """The following is a summary of part of a document:
+    #         """The following is a summary of a part of a document:
     #     {context}
     #     Based on this summary, please answer the following question: """+question_prompt
     #     )
@@ -184,7 +188,7 @@ class Generator:
     #     prompt_template = (
     #         "Use the following context to answer the following question: "+question
     #         +"Output both your answer and a score of how confident "
-    #         +"you are. Context: {context} Remember that you need to answer like this 'Answer: ... Score: ...'"
+    #         +"you are. Context: {context} Remember that you must answer like this 'Answer: ... Score: ..."
     #     )
     #     output_parser = RegexParser(
     #         regex=r"(.*?)Score: (.*)",
@@ -201,7 +205,7 @@ class Generator:
     #         document_variable_name=document_variable_name, 
     #         rank_key="score", 
     #         answer_key="answer",
-    #         return_intermediate_steps=False,
+    #         return_intermediate_steps=True,
     #         verbose=True,
     #     )
     #     context = Generator_utils.docParser(context)
@@ -209,15 +213,16 @@ class Generator:
     #         result = chain.invoke(context)
     #     except Exception as e:
     #         print(e)
-    #         raise GenerateFailedException("mapRerank")
+    #         raise GenerateFailedException("refine")
     #     print(type(result))
     #     return str(result)
     
+
     def identifyType(self, context):
         promptTemplate = Generator_utils.getPrompt("identifyType")
         prompt = PromptTemplate.from_template(promptTemplate)
-        
-        llm_chain = prompt | self.__llm 
+        outputParser = StrOutputParser()
+        llm_chain = prompt | self.__llm | outputParser
         try:
             result = llm_chain.invoke({"context": context})
         except Exception as e:
@@ -244,8 +249,8 @@ class Generator:
     def mapReduceNew(self, context, question):
         map_template = Generator_utils.getPrompt("answer")
         map_prompt = PromptTemplate.from_template(map_template)
-        
-        map_chain = map_prompt | self.__llm 
+        outputParser = StrOutputParser()
+        map_chain = map_prompt | self.__llm | outputParser
         answer = ""
         answerList = {}
         print("=====Map=====")
@@ -261,7 +266,7 @@ class Generator:
         {question}"""
         reduce_prompt = PromptTemplate.from_template(reduce_template)
         
-        reduce_chain = reduce_prompt | self.__llm 
+        reduce_chain = reduce_prompt | self.__llm | outputParser
         print("=====Reduce=====")
         result = reduce_chain.invoke({"answer": answer, "question": question})
         print(result)
