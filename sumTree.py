@@ -1,5 +1,7 @@
 from langchain_text_splitters import TokenTextSplitter
+from langchain_openai import ChatOpenAI
 import random
+from Generator import Generator
 #from Summariser_vllm import Summariser
 
 
@@ -15,11 +17,11 @@ class SumTreeNode:
         self.__tree= None
 
     # summarise the text
-    def summarise(self, text):
-        self.__summarisation = self.__summariser.sum(self.__tree.type, text)
+    def summarise(self, text) -> str:
+        self.__summarisation = self.__summariser.summary(self.__tree.type, text)
 
     # return the summarisation
-    def getSummarisation(self):
+    def getSummarisation(self) -> str:
         return self.__summarisation
     
     # obtain the children of the node
@@ -77,7 +79,7 @@ class SumTreeNode:
 class SumTree:
     def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3):
         # self.text = text # save memory -- for efficiency
-        self.__summariser = summariser
+        self.__summariser : Generator= summariser
         self.type=""
         self.__textArray=[]
         self.__chunk_size = chunk_size # define the granularity of the summarisation
@@ -90,7 +92,10 @@ class SumTree:
     
     # chunk the text
     def __chunk(self, text, overlap=0):
-        text_splitter = TokenTextSplitter(model_name="gpt-3.5-turbo", chunk_size=self.__chunk_size, chunk_overlap=overlap) # TODO: encoding method
+        if isinstance(self.__summariser.llm, ChatOpenAI):
+            text_splitter = TokenTextSplitter.from_tiktoken_encoder(model_name=self.__summariser.llm.model_name,chunk_size=self.__chunk_size, chunk_overlap=overlap)
+        else:
+            text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) # TODO: encoding method
         texts = text_splitter.split_text(text)
         print("=====Chunk successfully!=====")
         print(f"=====Chunk amount: {len(texts)}=====")
@@ -114,7 +119,8 @@ class SumTree:
             child.getSourceTextArr().append(i)
             children.append(child)
         parents = self.__group(children)
-        self.__height+=1
+        if len(children) != 1 :
+            self.__height+=1
         while len(parents)>1:
             self.__height+=1
             parents = self.__group(parents)
@@ -209,7 +215,7 @@ class SumTree:
         self.nodeGraph()
 
     # obtain the node at the specific level and index
-    def getNode(self, level, index):
+    def getNode(self, level, index) -> SumTreeNode:
         if level == 0:
             return self.__root
         queue = [self.__root]
