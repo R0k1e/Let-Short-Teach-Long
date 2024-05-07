@@ -9,8 +9,16 @@
         "summary", 
         "causal reasoning"
         ], 
+<<<<<<< HEAD
     "comprehension":[
         "superficial",
         "semantic"
         ]
 }
+=======
+    "comprehension":{
+        "superficial": "This question should be superficial.",
+        "semantic": "This question should be semantic."
+    }
+}
+>>>>>>> db56c14af5d47bc5e58cdfaea7392db1280b7301
