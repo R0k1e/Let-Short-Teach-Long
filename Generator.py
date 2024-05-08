@@ -127,15 +127,13 @@ class Generator:
         result = ""
         answerList = {}
         for i in range(len(context)):
-            if i % group_size == 0:
-                for j in range(group_size):
-                    prompt = self._formPrompt("extract")
-                    chain = self._formChain(prompt)
-                    extract_result = chain.invoke({"context": context[i+j], "question": question})
-                    print(f"Chunk {i+j+1}/{len(context)}:\n{extract_result}")
-                    intermediate += extract_result
-                    answerList["Chunk "+str(i+j+1)] = extract_result
-
+            prompt = self._formPrompt("extract")
+            chain = self._formChain(prompt)
+            extract_result = chain.invoke({"context": context[i], "question": question})
+            print(f"Chunk {i+1}/{len(context)}:\n{extract_result}")
+            intermediate += extract_result
+            answerList["Chunk "+str(i+1)] = extract_result
+            if i % group_size == group_size - 1 or i == len(context) - 1:
                 if i // group_size == 0:
                     prompt = self._formPrompt("firstAnswer")
                     chain = self._formChain(prompt)

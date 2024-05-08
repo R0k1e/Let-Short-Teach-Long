@@ -13,14 +13,14 @@ def pipeline(generator, text, paths):
     sumTree = SumTree(text, generator)
     sumTree.info()
     Generator_utils.dumpTree(paths["treePath"], sumTree)
-    node = sumTree.getNode(1, 0)
+    node = sumTree.getRandomNode()
     questionMeta = generator.ask(node.getSummarisation())
     question =questionMeta['question']
     # answers, answerList = Generator.mr_map(generator, node.getSourceSplitText(), question)
     # answer = Generator.mr_reduce(generator, answers, question)
     answer, answerList = generator.refine(node.getSourceSplitText(), question)
     Generator_utils.dumpIntermediate(paths["mapPath"], answerList)
-    Generator_utils.dump(generator, paths["dataPath"], sumTree.getText(), questionMeta, answer)
+    Generator_utils.dump(generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
 
 def constructPath(model_name):
     model_name = model_name.split("/")[-1]

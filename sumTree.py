@@ -247,3 +247,21 @@ class SumTree:
                     textArr.append(i)
         
         return [self.__textArray[i] for i in textArr]
+
+    def getRandomNode(self) -> SumTreeNode:
+        level = random.randint(0, self.__height)
+        queue = [self.__root]
+        levelNow = 0
+        while queue:
+            if levelNow == level:
+                index = random.randint(0, len(queue)-1)
+                break
+            level_nodes = len(queue)
+            for i in range(level_nodes):
+                node: SumTreeNode = queue.pop(0)
+                children = node.getChildren()
+                for child in children:
+                    queue.append(child)
+            levelNow+=1
+        print(f"Random node: LEVEL{level} NODE{index}")
+        return self.getNode(level, index)

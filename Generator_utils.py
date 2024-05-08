@@ -8,7 +8,7 @@ def clear(path):
         file.write("")
 
 
-def dump(generator, path, text, questionMeta, answer):
+def dump(generator, path, text, questionMeta, answer, node):
     if isinstance(generator.llm, ChatOpenAI):
         length = len(tiktoken.tokenize(text+questionMeta["question"]+answer))
     else:
@@ -17,6 +17,7 @@ def dump(generator, path, text, questionMeta, answer):
     
     data = {
         "text": text,
+        "position": f"Level {node.getLevel()} Node {node.getIndex()}",
         "question": {
             "question": questionMeta["question"],
             "questionCategory": questionMeta["questionCategory"],
