@@ -1,16 +1,21 @@
 {
-    "identifyType":"The following is an excerpt from a longer text. Your task is to analyze the provided excerpt and determine the possible type or genre of the longer text. In your response, please provide a thorough analysis and reasoning for your conclusion, and conclude your output by stating the specific type of the text. The excerpt type should be abstract and not mention the content of the text. The expected output format should be as follows: 'Analysis:\n{analysis}\n\nExcerpt type: {specific type}.' You must strictly adhere to the output format, the real type should follow 'Excerpt type:' and end with a period.\n\nExcerpt:\n{context}\nAnswer:\n", 
-    "summary":"Summarize the excerpt.\n\nExcerpt:\n{context}\nSummary:\n",
-    "ask": "Propose a question of {questionCategory} based on the following text. {comprehension}. You only need to provide the question, without analysis or answers.\n\nText:\n{context}\nQuestion:", 
-    "extract":"Please extract the relevant information from the text based on the question. Note that the text may contain only partial information and may not fully answer the question. You only need to extract the relevant parts. For information that is irrelevant, as well as content that is mentioned in the question but not in the text, you do not need to provide any answer.\n\nText:\n{context}\nQuestion:\n{question}\nAnswer:", 
-    "answer": "Base on the given information, answer the following question.\n\n Information:\n{context}\nQuestion:\n{question}\nAnswer:",
+    "identifyType":"The following is an excerpt from a longer text. Your task is to analyze the provided excerpt and determine the possible type or genre of the longer text. In your response, please provide a thorough analysis and reasoning for your conclusion, and conclude your output by stating the specific type of the text. The excerpt type must be abstract and not mention the content of the text. The expected output format must be as follows: 'Analysis:\n{analysis}\n\nExcerpt type: {specific type}.' You must strictly adhere to the output format, the real type must follow 'Excerpt type:' and end with a period.\n\nExcerpt:\n{context}\nAnswer:\n", 
+    "summary":"Summarize the excerpt by extracting its key idea and providing a concise summary of the text. Ensure that your summary is concrete, well-structured, and captures the essence of the excerpt.\n\nExcerpt:\n{context}\nSummary:\n",
+    "ask": "Propose a question based on the following text. {questionCategory} {comprehension} You only need to provide the question, without analysis or answers.\n\nText:\n{context}\nQuestion:", 
+    "extract":"Please extract the relevant information from the text based on the question. Note that the text may contain only partial information and may not fully answer the question. You only need to extract the relevant parts. For information in the text that is irrelevant to the question, as well as the entity that is mentioned in the question but doesn't have relative information in the test, you do not need to provide any answer.\n\nText:\n{context}\nQuestion:\n{question}\nAnswer:", 
+    "firstAnswer": "Base on the given information, answer the following question.  \n\n Information:\n{context}\nQuestion:\n{question}\nAnswer:",
+    "followingAnswer": "Base on the given information, answer the following question. \n\n Information:\n{context}\nExisted Answer:\n{answer}\nQuestion:\n{question}\nNew Answer:",
     "questionCategory": {
-        "information extraction": "This question should be about information extraction.",
-        "summary": "This question should be about summarization.",
-        "causal reasoning" : "This question should be about causal reasoning."
+        "information extraction": "This question must be about information extraction.",
+        "summary": "This question must be about summarization.",
+        "causal reasoning" : "This question must be about causal reasoning."
     }, 
     "comprehension":{
-        "superficial": "This question should be superficial.",
-        "semantic": "This question should be semantic."
-    }
+        "superficial": "The entity appeared in the question could be found directly in the text.",
+        "semantic": "The noun appeared in the question to refer to someone or something must be understanded firstly, and then infered from the text to get related information, such as using 'male protagonist' instead of 'Potter' in the question when the text refers to the novel 'Harry Potter'."
+    },
+    "questionRules":[
+        "The question shoul ddiscover different layers and details of the text, in order to thoroughly exploit the information provided.",
+        " "
+    ]
 }
