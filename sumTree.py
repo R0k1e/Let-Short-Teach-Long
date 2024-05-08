@@ -18,7 +18,7 @@ class SumTreeNode:
 
     # summarise the text
     def summarise(self, text) -> str:
-        self.__summarisation = self.__summariser.summary(self.__tree.type, text)
+        self.__summarisation = self.__summariser.summary(text)
 
     # return the summarisation
     def getSummarisation(self) -> str:
@@ -105,11 +105,11 @@ class SumTree:
     def __build(self, text):
         chunks = self.__chunk(text)
         self.__textArray=chunks
-        try:
-            self.type = self.__summariser.identifyType(random.choice(chunks))
-        except Exception as e:
-            print(e)
-            self.type = "text"
+        # try:
+        #     self.type = self.__summariser.identifyType(random.choice(chunks))
+        # except Exception as e:
+        #     print(e)
+        self.type = "text"
         children=[] # list of children
         for i, chunk in enumerate(chunks):
             print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
@@ -134,7 +134,7 @@ class SumTree:
         
         parents = []
         for i in range(len(children)):
-            if(i%self.__childern_group_capacity==0):
+            if i%self.__childern_group_capacity==0:
                 group = SumTreeNode(self.__summariser)
                 group.setTree(self)
                 group.setChildren(children[i:i+self.__childern_group_capacity])

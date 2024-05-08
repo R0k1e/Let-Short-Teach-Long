@@ -22,20 +22,34 @@ class Generator:
 
         self.llm = llm
         self.tokenizer = tokenizer
+        if isinstance(self.llm, ChatOpenAI):
+            self.model_name = self.llm.model_name
+        else:
+            self.model_name = self.llm.model.split("/")[-1]
         print("=====Create a summariser successfully!=====")
 
-
-    def summary(self, textType, text):
-        promptTemplate = Generator_utils.getPrompt("summary")
-        prompt = PromptTemplate.from_template(promptTemplate)
+    def _formPrompt(self, task):
+        modelTemplate = Generator_utils.getTemplate(self.model_name)
+        modelTemplate = modelTemplate.format(user_message= Generator_utils.getPrompt(task))
+        prompt = PromptTemplate.from_template(modelTemplate)
+        return prompt
+    
+    def _formChain(self, prompt):
+        llm_chain = None
         if isinstance(self.llm, ChatOpenAI):
             outputParser = StrOutputParser()
             llm_chain = prompt | self.llm | outputParser
         else:
             llm_chain = prompt | self.llm 
+
+        return llm_chain
+
+    def summary(self, text):
+        prompt = self._formPrompt("summary")
+        llm_chain = self._formChain(prompt)
         
         try: 
-            summary_result = llm_chain.invoke({"type": textType,"context": text})
+            summary_result = llm_chain.invoke({"context": text})
         except Exception as e:
             print(e)
             raise GenerateFailedException("summary")
@@ -44,17 +58,13 @@ class Generator:
         return summary_result
 
     def ask(self, context) -> dict[str]:
-        promptTemplate = Generator_utils.getPrompt("ask")
+        
         questionCategories = Generator_utils.getPrompt("questionCategory")
-        questionCategory = random.choice(questionCategories)
+        questionCategory = questionCategories[random.choice(list(questionCategories.keys()))]
         comprehensions = Generator_utils.getPrompt("comprehension")
-        comprehension = random.choice(comprehensions)
-        prompt = PromptTemplate.from_template(promptTemplate)
-        if isinstance(self.llm, ChatOpenAI):
-            outputParser = StrOutputParser()
-            llm_chain = prompt | self.llm | outputParser    
-        else:
-            llm_chain = prompt | self.llm 
+        comprehension = comprehensions[random.choice(list(comprehensions.keys()))]
+        prompt = self._formPrompt("ask")
+        llm_chain = self._formChain(prompt)
 
         try:
             question = llm_chain.invoke({"questionCategory": questionCategory, "comprehension": comprehension, "context": context})
@@ -67,14 +77,9 @@ class Generator:
 
     
     def identifyType(self, context):
-        promptTemplate = Generator_utils.getPrompt("identifyType")
-        prompt = PromptTemplate.from_template(promptTemplate)
+        prompt = self._formPrompt("identifyType")
         
-        if isinstance(self.llm, ChatOpenAI):
-            outputParser = StrOutputParser()
-            llm_chain = prompt | self.llm | outputParser
-        else:
-            llm_chain = prompt | self.llm 
+        llm_chain = self._formChain(prompt)
 
         try:
             result = llm_chain.invoke({"context": context})
@@ -92,16 +97,9 @@ class Generator:
             raise GenerateFailedException("identifyType")
 
 
-    def mr_map(self, context, question):
-        map_template = Generator_utils.getPrompt("answer")
-        map_prompt = PromptTemplate.from_template(map_template)
-        
-        if isinstance(self.llm, ChatOpenAI):
-            outputParser = StrOutputParser()
-            map_chain = map_prompt | self.llm | outputParser
-        else:
-            map_chain = map_prompt | self.llm  
-
+    def mr_map(self, context: list[str], question):
+        map_prompt = self._formPrompt("extract")        
+        map_chain = self._formChain(map_prompt)
         answer = ""
         answerList = {}
         print("=====Map=====")
@@ -113,17 +111,41 @@ class Generator:
         
         return answer, answerList
         
-    def mr_reduce(self, answers, question):
+    def mr_reduce(self, context, question):
         # Reduce
-        reduce_template = Generator_utils.getPrompt("reduce")
-        reduce_prompt = PromptTemplate.from_template(reduce_template)
+        reduce_prompt = self._formPrompt("firstAnswer")
         
-        if isinstance(self.llm, ChatOpenAI):
-            outputParser = StrOutputParser()
-            reduce_chain = reduce_prompt | self.llm | outputParser 
-        else:
-            reduce_chain = reduce_prompt | self.llm 
+        reduce_chain = self._formChain(reduce_prompt)
         print("=====Reduce=====")
-        result = reduce_chain.invoke({"answer": answers, "question": question})
+        result = reduce_chain.invoke({"context": context, "question": question})
         print(result)
         return result
+
+    #对3个chunk进行信息提取，然后对提取的信息进行拼接
+    def refine(self, context: list[str], question, group_size=3):
+        intermediate = ""
+        result = ""
+        answerList = {}
+        for i in range(len(context)):
+            if i % group_size == 0:
+                for j in range(group_size):
+                    prompt = self._formPrompt("extract")
+                    chain = self._formChain(prompt)
+                    extract_result = chain.invoke({"context": context[i+j], "question": question})
+                    print(f"Chunk {i+j+1}/{len(context)}:\n{extract_result}")
+                    intermediate += extract_result
+                    answerList["Chunk "+str(i+j+1)] = extract_result
+
+                if i // group_size == 0:
+                    prompt = self._formPrompt("firstAnswer")
+                    chain = self._formChain(prompt)
+                    result = chain.invoke({"context": intermediate, "question": question})
+                else:
+                    prompt = self._formPrompt("followingAnswer")
+                    chain = self._formChain(prompt)
+                    result = chain.invoke({"context": intermediate, "answer": result, "question": question})
+                answerList["Intermediate "+str(i//group_size)] = intermediate
+                print(f"Intermediate result:\n{intermediate}")
+                intermediate = ""
+        return result, answerList
+                    

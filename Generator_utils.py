@@ -51,3 +51,9 @@ def getPrompt(task):
         promptsLine = f.read()
         prompts = json.loads(promptsLine)
         return prompts[task]
+    
+def getTemplate(model):
+    with open('modelTemplate.json') as f:
+        templatesLine = f.read()
+        templates = json.loads(templatesLine)
+        return templates[model]

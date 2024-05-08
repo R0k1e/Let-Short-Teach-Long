@@ -6,18 +6,19 @@ from langchain_openai import ChatOpenAI
 from transformers import AutoTokenizer
 import os, json, time
 os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
-os.environ['OPENAI_API_KEY'] = 'sk-NPhtpSCxOwZIbYU57fF9248fB5834eCdA9Db2a276d62C54d'
-os.environ['OPENAI_API_BASE'] = 'https://yeysai.com/v1'
+os.environ['OPENAI_API_KEY'] = ''
+os.environ['OPENAI_API_BASE'] = ''
 
 def pipeline(generator, text, paths):
     sumTree = SumTree(text, generator)
     sumTree.info()
     Generator_utils.dumpTree(paths["treePath"], sumTree)
     node = sumTree.getNode(1, 0)
-    questionMeta = Generator.ask(generator, node.getSummarisation())
+    questionMeta = generator.ask(node.getSummarisation())
     question =questionMeta['question']
-    answers, answerList = Generator.mr_map(generator, node.getSourceSplitText(), question)
-    answer = Generator.mr_reduce(generator, answers, question)
+    # answers, answerList = Generator.mr_map(generator, node.getSourceSplitText(), question)
+    # answer = Generator.mr_reduce(generator, answers, question)
+    answer, answerList = generator.refine(node.getSourceSplitText(), question)
     Generator_utils.dumpIntermediate(paths["mapPath"], answerList)
     Generator_utils.dump(generator, paths["dataPath"], sumTree.getText(), questionMeta, answer)
 
@@ -39,7 +40,7 @@ def constructPath(model_name):
     
 
 if __name__ == "__main__":
-    model = "/data/public/wangshuo/LongContext/model/THUDM/LongAlign-13B-64k"
+    model = "/data/public/wangshuo/LongContext/model/meta-llama/Meta-Llama-3-8B-Instruct"
     # model = "gpt-3.5-turbo"
     llm = VLLM(
             model=model,
