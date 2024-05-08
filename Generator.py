@@ -144,8 +144,8 @@ class Generator:
                     prompt = self._formPrompt("followingAnswer")
                     chain = self._formChain(prompt)
                     result = chain.invoke({"context": intermediate, "answer": result, "question": question})
-                answerList["Intermediate "+str(i//group_size)] = intermediate
-                print(f"Intermediate result:\n{intermediate}")
+                answerList["Intermediate "+str(i//group_size)] = result
+                print(f"Intermediate result:\n{result}")
                 intermediate = ""
         return result, answerList
                     
