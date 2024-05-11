@@ -2,3 +2,4 @@
 LongAlignProcessed.jsonl
 outputData/
 rawData/
+__pycache__/
