@@ -8,47 +8,68 @@ def clear(path):
         file.write("")
 
 
-def dump(generator, path, text, questionMeta, answer, node):
-    if isinstance(generator.llm, ChatOpenAI):
-        length = len(tiktoken.tokenize(text+questionMeta["question"]+answer))
+def dump(data_id, generator, path, text, questionMeta, answer, node = None):
+
+    if isinstance(generator.llm, ChatOpenAI) and "claude" not in generator.model_name:
+        encoding = tiktoken.encoding_for_model(generator.model_name)
+        num_tokens = len(encoding.encode(text+questionMeta["question"]+answer))
+        length = num_tokens
     else:
         length = len(generator.tokenizer.tokenize(text+questionMeta["question"]+answer))
     
     
+    if node is None:
+        level = 0
+        index = 0
+    else :
+        level = node.getLevel()
+        index = node.getIndex()
+
+
     data = {
-        "text": text,
-        "position": f"Level {node.getLevel()} Node {node.getIndex()}",
+        "generator" : generator.model_name,
+        "id": data_id,
+        "position": f"Level {level} Node {index}",
         "question": {
             "question": questionMeta["question"],
             "questionCategory": questionMeta["questionCategory"],
             "comprehension": questionMeta["comprehension"]
         },
         "answer": answer,
-        "length": length
+        "length": length,
+        "text": text
     }
 
     with open(path, 'a') as file:
         json.dump(data, file, ensure_ascii=False)
         file.write("\n")
 
-def dumpTree(path, sumTree):
+def dumpTree(data_id, path, sumTree):
     with open(path, 'a') as file:
-        json.dump(sumTree.levelOrderForDump(), file, ensure_ascii=False)
+        result = {"id": data_id}
+        levelOrder = sumTree.levelOrderForDump()
+        result.update(levelOrder)
+        json.dump(result, file, ensure_ascii=False)
         file.write("\n")
     
 
-def dumpIntermediate(path, answerList):
+def dumpIntermediate(data_id, path, answerList):
     with open(path, 'a') as file:
-        json.dump(answerList, file, ensure_ascii=False)
+        result = {"id": data_id}
+        result.update(answerList)
+        json.dump(result, file, ensure_ascii=False)
         file.write("\n")
 
 def docParser(docs : list) -> list[Document]:
     documents = [Document(page_content=doc) for doc in docs]
     return documents
 
-def getPrompt(task):
+def getPrompt(task, lang = 'en'):
+    prompt_path = "promptTemplate.json"
+    if lang == 'zh':
+        prompt_path = "promptTemplate_zh.json"
     # identifyType, metaQuestion, summarise, ask, complicate, score, answer
-    with open('promptTemplate.json') as f:
+    with open(prompt_path) as f:
         promptsLine = f.read()
         prompts = json.loads(promptsLine)
         return prompts[task]
