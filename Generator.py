@@ -1,36 +1,40 @@
-from langchain_community.llms import VLLM
+import time
+from langchain_community.llms import VLLM, VLLMOpenAI
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 import Generator_utils
 from langchain_core.output_parsers import StrOutputParser
 from GenerateFailedException import GenerateFailedException
 from transformers import AutoTokenizer
+from langchain_anthropic import ChatAnthropic
 import Generator_utils
 import os, re
 import random
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
-os.environ['OPENAI_API_KEY'] = ''
-os.environ['OPENAI_API_BASE'] = ''
 
 class Generator:
     def __init__(
             self,
             llm,
-            tokenizer = None
+            tokenizer = None,
+            lang = 'en'
         ):
 
         self.llm = llm
         self.tokenizer = tokenizer
+        self.lang = lang
         if isinstance(self.llm, ChatOpenAI):
             self.model_name = self.llm.model_name
+        elif isinstance(self.llm, VLLMOpenAI):
+            self.model_name = self.llm.model_name.split("/")[-1]
         else:
             self.model_name = self.llm.model.split("/")[-1]
         print("=====Create a summariser successfully!=====")
 
+
     def _formPrompt(self, task):
         modelTemplate = Generator_utils.getTemplate(self.model_name)
-        modelTemplate = modelTemplate.format(user_message= Generator_utils.getPrompt(task))
+        modelTemplate = modelTemplate.format(user_message= Generator_utils.getPrompt(task, self.lang))
         prompt = PromptTemplate.from_template(modelTemplate)
         return prompt
     
@@ -44,12 +48,13 @@ class Generator:
 
         return llm_chain
 
-    def summary(self, text):
+    def summary(self, text: str, word_count):
         prompt = self._formPrompt("summary")
         llm_chain = self._formChain(prompt)
         
+        
         try: 
-            summary_result = llm_chain.invoke({"context": text})
+            summary_result = llm_chain.invoke({"context": text, "word_count": word_count})
         except Exception as e:
             print(e)
             raise GenerateFailedException("summary")
@@ -58,11 +63,13 @@ class Generator:
         return summary_result
 
     def ask(self, context) -> dict[str]:
-        
-        questionCategories = Generator_utils.getPrompt("questionCategory")
-        questionCategory = questionCategories[random.choice(list(questionCategories.keys()))]
-        comprehensions = Generator_utils.getPrompt("comprehension")
-        comprehension = comprehensions[random.choice(list(comprehensions.keys()))]
+        random.seed(time.time())
+        questionCategories = Generator_utils.getPrompt("questionCategory", self.lang)
+        questionCategoryKey = random.choice(list(questionCategories.keys()))
+        questionCategory = questionCategories[questionCategoryKey]
+        comprehensions = Generator_utils.getPrompt("comprehension", self.lang)
+        comprehensionKey = random.choice(list(comprehensions.keys()))
+        comprehension = comprehensions[comprehensionKey]
         prompt = self._formPrompt("ask")
         llm_chain = self._formChain(prompt)
 
@@ -71,10 +78,29 @@ class Generator:
         except Exception as e:
             print(e)
             raise GenerateFailedException("ask")
+        question = question.strip()
         print(question)
         print("=====Ask successfully!=====")
-        return {"question":question, "questionCategory":questionCategory, "comprehension":comprehension}
+        return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
 
+    def ask_all_type(self, context, questionMeta: dict) -> dict[str]:
+        questionCategories = Generator_utils.getPrompt("questionCategory", self.lang)
+        questionCategory = questionCategories[questionMeta["questionCategory"]]
+        comprehensions = Generator_utils.getPrompt("comprehension", self.lang)
+        comprehension = comprehensions[questionMeta["comprehension"]]
+        prompt = self._formPrompt("ask")
+        llm_chain = self._formChain(prompt)
+
+        try:
+            question = llm_chain.invoke({"questionCategory": questionCategory, "comprehension": comprehension, "context": context})
+        except Exception as e:
+            print(e)
+            raise GenerateFailedException("ask")
+        question = question.strip()
+        print(question)
+        print("=====Ask successfully!=====")
+        return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
+    
     
     def identifyType(self, context):
         prompt = self._formPrompt("identifyType")
@@ -121,18 +147,37 @@ class Generator:
         print(result)
         return result
 
-    #对3个chunk进行信息提取，然后对提取的信息进行拼接
+    def pure_refine(self, context: list[str], question):
+        result = ""
+        answerList = {"generator": self.model_name}
+        for i in range(len(context)):
+                if i == 0:
+                    prompt = self._formPrompt("firstAnswer")
+                    chain = self._formChain(prompt)
+                    result = chain.invoke({"context": context[i], "question": question})
+                else:
+                    prompt = self._formPrompt("followingAnswer")
+                    chain = self._formChain(prompt)
+                    result = chain.invoke({"context": context[i], "answer": result, "question": question})
+                answerList[f"Intermediate input {i}"] = context[i]
+                answerList[f"Intermediate result {i}"] = result
+                print(f"Intermediate result:\n{result}")
+        return result, answerList
+    
+
+    #对多个chunk进行信息提取，然后对提取的信息进行拼接
     def refine(self, context: list[str], question, group_size=3):
         intermediate = ""
         result = ""
-        answerList = {}
+        answerList = {"generator": self.model_name}
         for i in range(len(context)):
             prompt = self._formPrompt("extract")
             chain = self._formChain(prompt)
             extract_result = chain.invoke({"context": context[i], "question": question})
             print(f"Chunk {i+1}/{len(context)}:\n{extract_result}")
             intermediate += extract_result
-            answerList["Chunk "+str(i+1)] = extract_result
+            answerList["Chunk "+str(i+1)] = context[i]
+            answerList["Extracted "+str(i+1)] = extract_result
             if i % group_size == group_size - 1 or i == len(context) - 1:
                 if i // group_size == 0:
                     prompt = self._formPrompt("firstAnswer")
@@ -142,8 +187,29 @@ class Generator:
                     prompt = self._formPrompt("followingAnswer")
                     chain = self._formChain(prompt)
                     result = chain.invoke({"context": intermediate, "answer": result, "question": question})
-                answerList["Intermediate "+str(i//group_size)] = result
+                answerList["Intermediate input"+str(i//group_size)] = intermediate
+                answerList["Intermediate result"+str(i//group_size)] = result
                 print(f"Intermediate result:\n{result}")
                 intermediate = ""
         return result, answerList
-                    
+    
+    def extract(self, context, question):
+        prompt = self._formPrompt("extract")
+        chain = self._formChain(prompt)
+        extract_result = chain.invoke({"context": context, "question": question})
+        return extract_result
+    
+    def firstAnswer(self, context, question):
+        prompt = self._formPrompt("firstAnswer")
+        chain = self._formChain(prompt)
+        result = chain.invoke({"context": context, "question": question})
+        return result
+        
+    def followingAnswer(self, context, question, previousAnswer):
+        prompt = self._formPrompt("followingAnswer")
+        chain = self._formChain(prompt)
+        result = chain.invoke({"context": context, "answer": previousAnswer, "question": question})
+        return result
+
+    def setLang(self, lang):
+        self.lang = lang

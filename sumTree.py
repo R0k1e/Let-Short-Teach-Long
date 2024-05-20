@@ -2,6 +2,7 @@ from langchain_text_splitters import TokenTextSplitter
 from langchain_openai import ChatOpenAI
 import random
 from Generator import Generator
+from transformers import AutoTokenizer
 #from Summariser_vllm import Summariser
 
 
@@ -16,9 +17,10 @@ class SumTreeNode:
         self.__sourceTextArr = []
         self.__tree= None
 
+
     # summarise the text
     def summarise(self, text) -> str:
-        self.__summarisation = self.__summariser.summary(text)
+        self.__summarisation = self.__summariser.summary(text, self.__tree.summarySize)
 
     # return the summarisation
     def getSummarisation(self) -> str:
@@ -77,11 +79,13 @@ class SumTreeNode:
         self.__tree = tree
 
 class SumTree:
-    def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3):
+    def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3, lang = 'en'):
         # self.text = text # save memory -- for efficiency
         self.__summariser : Generator= summariser
         self.type=""
         self.__textArray=[]
+        self.summarySize = 0
+        self.lang = lang
         self.__chunk_size = chunk_size # define the granularity of the summarisation
         self.__childern_group_capacity = children_group_capacity # define the number of children to be grouped together
         print(f"chunk_size: {self.__chunk_size}\nchildren_group_capacity: {self.__childern_group_capacity}")
@@ -89,14 +93,34 @@ class SumTree:
         self.__root=self.__build(text)
         self.nodeGraph()
         print("=====Create a SumTree successfully!=====")
+
+    def split_text_on_tokens(self, text: str, tokenizer, tokens_per_chunk, chunk_overlap) -> list[str]:
+        """Split incoming text and return chunks using tokenizer."""
+        splits: list[str] = []
+        input_ids = tokenizer.encode(text)
+        start_idx = 0
+        cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
+        chunk_ids = input_ids[start_idx:cur_idx]
+        while start_idx < len(input_ids):
+            splits.append(tokenizer.decode(chunk_ids))
+            if cur_idx == len(input_ids):
+                break
+            start_idx += tokens_per_chunk - chunk_overlap
+            cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
+            chunk_ids = input_ids[start_idx:cur_idx]
+        return splits
     
+
     # chunk the text
     def __chunk(self, text, overlap=0):
-        if isinstance(self.__summariser.llm, ChatOpenAI):
+        if isinstance(self.__summariser.llm, ChatOpenAI) and "claude" not in self.__summariser.model_name:
             text_splitter = TokenTextSplitter.from_tiktoken_encoder(model_name=self.__summariser.llm.model_name,chunk_size=self.__chunk_size, chunk_overlap=overlap)
+            texts = text_splitter.split_text(text)
         else:
-            text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) # TODO: encoding method
-        texts = text_splitter.split_text(text)
+            # text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) 
+            texts = self.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
+            
+        print(self.__summariser.llm.model_name)
         print("=====Chunk successfully!=====")
         print(f"=====Chunk amount: {len(texts)}=====")
         return texts
@@ -113,6 +137,8 @@ class SumTree:
         children=[] # list of children
         for i, chunk in enumerate(chunks):
             print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
+            if i == 0:
+                self.summarySize = self.__getSummarySize(chunk)
             child = SumTreeNode(self.__summariser)
             child.setTree(self)
             child.summarise(chunk)
@@ -149,6 +175,17 @@ class SumTree:
                 parents.append(group)
         print("=====Group successfully!=====")
         return parents
+    
+    def __getSummarySize(self, context: str):
+        if self.lang == 'en':
+            word_count = len(context.split())
+            print(f"summary Size :{word_count}")
+            return word_count//(self.__childern_group_capacity+1)
+        elif self.lang == 'zh':
+            word_count = len(context)
+            print(f"summary Size :{word_count}")
+            return word_count//(self.__childern_group_capacity+1)
+        return 0
 
     # get original text -- for efficiency
     def getText(self):
@@ -158,22 +195,30 @@ class SumTree:
         return text
     
     # level order traversal
-    def levelOrderTraversal(self):
+    def levelOrderTraversal(self) -> list[SumTreeNode]:
+        nodes = []
         queue = [self.__root]
         while queue:
             node : SumTreeNode = queue.pop(0)
+            nodes.append(node)
             print(f"LEVEL{node.getLevel()} NODE{node.getIndex()}: ")
             print(node.getSummarisation())
             children = node.getChildren()
             for child in children:
                 queue.append(child)
+        
+        return nodes
     
     def levelOrderForDump(self):
         queue = [self.__root]
-        result = {"Height": self.__height, "Type": self.type, "Chunk size": self.__chunk_size, "Children group capacity": self.__childern_group_capacity}
+        result = {"Height": self.__height, "Type": self.type, "Chunk size": self.__chunk_size, "Children group capacity": self.__childern_group_capacity, "summarySize": self.summarySize}
         while queue:
             node : SumTreeNode = queue.pop(0)
-            result[f"LEVEL{node.getLevel()} NODE{node.getIndex()}"] = node.getSummarisation()
+            if node.getLevel() == self.__height: 
+                result[f"LEVEL{node.getLevel()} NODE{node.getIndex()} Input"] = node.getSourceText()
+            else:
+                result[f"LEVEL{node.getLevel()} NODE{node.getIndex()} Input"] = node.getChildrenSummarisation()
+            result[f"LEVEL{node.getLevel()} NODE{node.getIndex()} Summary"] = node.getSummarisation()
             children = node.getChildren()
             for child in children:
                 queue.append(child)
@@ -265,3 +310,8 @@ class SumTree:
             levelNow+=1
         print(f"Random node: LEVEL{level} NODE{index}")
         return self.getNode(level, index)
+    
+    def getChildrenGroupCapacity(self):
+        return self.__childern_group_capacity
+    
+    

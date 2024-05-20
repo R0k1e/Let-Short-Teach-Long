@@ -3,3 +3,7 @@ LongAlignProcessed.jsonl
 outputData/
 rawData/
 __pycache__/
+claude-tokenizer/
+data/
+lid.176.bin
+run_pipeline.sh
