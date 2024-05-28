@@ -1,0 +1,43 @@
+import json
+import random
+import os
+
+# Path to the input JSONL file
+input_path = 'outputData/LongAlignProcessed/2024-05-15-00-16-07'
+data_file = os.path.join(input_path, 'longContext.jsonl')
+intermediate_file = os.path.join(input_path, 'refine.jsonl')
+tree_file = os.path.join(input_path, 'tree.jsonl')
+
+# Path to the output file
+output_file = 'output.json'
+
+# Number of lines to sample
+sample_size = 1
+
+# Read the input JSONL file
+with open(data_file, 'r') as file:
+    lines = file.readlines()
+    print(len(lines))
+
+# Randomly sample lines
+sampled_lines = random.sample(lines, sample_size)
+
+# Write the sampled lines to the output file
+with open(output_file, 'w') as file:
+    for line in sampled_lines:
+        sampled_data = json.loads(line)
+        data_id = sampled_data['id']
+        with open(intermediate_file, 'r') as intermediate:
+            for intermediate_line in intermediate:
+                intermediate_data = json.loads(intermediate_line)
+                if intermediate_data['id'] == data_id:
+                    sampled_data['intermediate'] = intermediate_data
+                    break
+        with open(tree_file, 'r') as tree:
+            for tree_line in tree:
+                tree_data = json.loads(tree_line)
+                if tree_data['id'] == data_id:
+                    sampled_data['tree'] = tree_data
+                    break
+        json.dump(sampled_data, file, ensure_ascii=False)
+        file.write('\n')
