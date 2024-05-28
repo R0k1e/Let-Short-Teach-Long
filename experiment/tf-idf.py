@@ -13,7 +13,7 @@ with open('clean_data/threebody.jsonl', 'r') as f:
 sents = text_splitter.split_text(text)
 #首先，构建语料库corpus
 sents=[jieba.lcut(sent) for sent in sents] #对每个句子进行分词
-# sents=[word_tokenize(sent) for sent in sents] #对每个句子进行分词
+sents=[word_tokenize(sent) for sent in sents] #对每个句子进行分词
 #print(sents)  #输出分词后的结果
 corpus=TextCollection(sents)  #构建语料库
 print(corpus)  #输出语料库

@@ -146,14 +146,14 @@ if __name__ == "__main__":
     model = args.model
     data_path = args.data
     model = "gpt-3.5-turbo"
-    # llm = VLLM(
-    #         model=model,
-    #         trust_remote_code=True,  # mandatory for hf models
-    #         tensor_parallel_size=1,
-    #         top_k=10,
-    #         top_p=0.95,
-    #         temperature=0.8
-    # )
+    llm = VLLM(
+            model="../MiniCPM-2B-sft-bf16",
+            trust_remote_code=True,  # mandatory for hf models
+            tensor_parallel_size=1,
+            top_k=10,
+            top_p=0.95,
+            temperature=0.8
+    )
     gpt = ChatOpenAI(temperature=0, model_name=model)
     # tokenizer = AutoTokenizer.from_pretrained(model)
     # tokenizer = GPT2TokenizerFast.from_pretrained('Xenova/claude-tokenizer')
