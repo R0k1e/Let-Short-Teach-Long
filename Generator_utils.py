@@ -27,8 +27,8 @@ def dump(data_id, generator, path, text, questionMeta, answer, node = None):
 
 
     data = {
-        "generator" : generator.model_name,
         "id": data_id,
+        "generator" : generator.model_name,
         "position": f"Level {level} Node {index}",
         "question": {
             "question": questionMeta["question"],
@@ -53,9 +53,9 @@ def dumpTree(data_id, path, sumTree):
         file.write("\n")
     
 
-def dumpIntermediate(data_id, path, answerList):
+def dumpIntermediate(data_id, path, answerList, node):
     with open(path, 'a') as file:
-        result = {"id": data_id}
+        result = {"id": data_id, "position": f"Level {node.getLevel()} Node {node.getIndex()}"}
         result.update(answerList)
         json.dump(result, file, ensure_ascii=False)
         file.write("\n")

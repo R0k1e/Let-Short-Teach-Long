@@ -8,10 +8,9 @@ from transformers import GPT2TokenizerFast
 import concurrent.futures
 import os, json, time, argparse
 import fasttext
+import tiktoken
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-os.environ['OPENAI_API_KEY'] = ''
-os.environ['OPENAI_API_BASE'] = ''
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="model name or path")
@@ -49,7 +48,7 @@ def pipeline(data_id, llm, tokenizer, text, paths):
                 Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
 
 
-def pipeline_randomNode(data_id, llm, tokenizer, text, paths):
+def pipeline_randomNode(data_id, llm, tokenizer, text, path):
     lang = identify_language(text.split('\n')[0])
     generator = Generator(llm, tokenizer, lang)
     sumTree = SumTree(text, generator, lang = lang)
@@ -59,7 +58,7 @@ def pipeline_randomNode(data_id, llm, tokenizer, text, paths):
     questionMeta = generator.ask(node.getSummarisation())
     question =questionMeta['question'] 
     answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
-    Generator_utils.dumpIntermediate(data_id, paths["mapPath"], answerList)
+    Generator_utils.dumpIntermediate(data_id, paths["mapPath"], answerList, node)
     Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
 
 
@@ -146,7 +145,7 @@ def dispatcher(model, data_path):
 if __name__ == "__main__":
     model = args.model
     data_path = args.data
-    # model = "gpt-3.5-turbo"
+    model = "gpt-3.5-turbo"
     # llm = VLLM(
     #         model=model,
     #         trust_remote_code=True,  # mandatory for hf models
@@ -155,18 +154,19 @@ if __name__ == "__main__":
     #         top_p=0.95,
     #         temperature=0.8
     # )
-    # claude = ChatOpenAI(temperature=0, model_name=model)
+    gpt = ChatOpenAI(temperature=0, model_name=model)
     # tokenizer = AutoTokenizer.from_pretrained(model)
     # tokenizer = GPT2TokenizerFast.from_pretrained('Xenova/claude-tokenizer')
-    # paths = constructPath(data_path)
+    encoding = tiktoken.encoding_for_model(model)
+    paths = constructPath(data_path)
     # vllm needs a tokenizer, gpt does not
     # generator = Generator(llm, tokenizer=tokenizer)
-    # data_id = 1
-    # with open(data_path, 'r') as file:
-    #     for line in file:
-    #         obj = json.loads(line)
-    #         text = obj['text']
-    #         #lang
-    #         pipeline_randomNode(data_id, generator, text, paths)
-    #         data_id += 1
-    dispatcher(model, data_path)
+    data_id = 1
+    with open(data_path, 'r') as file:
+        for line in file:
+            obj = json.loads(line)
+            text = obj['text']
+            #lang
+            pipeline_randomNode(data_id, gpt, encoding, text, paths)
+            data_id += 1
+    # dispatcher(model, data_path)

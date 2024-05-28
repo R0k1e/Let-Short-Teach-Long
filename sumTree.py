@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 import random
 from Generator import Generator
 from transformers import AutoTokenizer
+import TFIDFUtils
 #from Summariser_vllm import Summariser
 
 
@@ -93,32 +94,12 @@ class SumTree:
         self.__root=self.__build(text)
         self.nodeGraph()
         print("=====Create a SumTree successfully!=====")
-
-    def split_text_on_tokens(self, text: str, tokenizer, tokens_per_chunk, chunk_overlap) -> list[str]:
-        """Split incoming text and return chunks using tokenizer."""
-        splits: list[str] = []
-        input_ids = tokenizer.encode(text)
-        start_idx = 0
-        cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
-        chunk_ids = input_ids[start_idx:cur_idx]
-        while start_idx < len(input_ids):
-            splits.append(tokenizer.decode(chunk_ids))
-            if cur_idx == len(input_ids):
-                break
-            start_idx += tokens_per_chunk - chunk_overlap
-            cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
-            chunk_ids = input_ids[start_idx:cur_idx]
-        return splits
     
 
     # chunk the text
     def __chunk(self, text, overlap=0):
-        if isinstance(self.__summariser.llm, ChatOpenAI) and "claude" not in self.__summariser.model_name:
-            text_splitter = TokenTextSplitter.from_tiktoken_encoder(model_name=self.__summariser.llm.model_name,chunk_size=self.__chunk_size, chunk_overlap=overlap)
-            texts = text_splitter.split_text(text)
-        else:
-            # text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) 
-            texts = self.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
+        # text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) 
+        texts = TFIDFUtils.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
             
         print(self.__summariser.llm.model_name)
         print("=====Chunk successfully!=====")
@@ -151,7 +132,7 @@ class SumTree:
             self.__height+=1
             parents = self.__group(parents)
         print("=====Build successfully!=====")
-        return parents[0] # TODO: return the root node
+        return parents[0] 
     
     # group the children and form the parent node
     def __group(self, children: list):

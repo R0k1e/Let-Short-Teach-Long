@@ -6,7 +6,6 @@ import Generator_utils
 from langchain_core.output_parsers import StrOutputParser
 from GenerateFailedException import GenerateFailedException
 from transformers import AutoTokenizer
-from langchain_anthropic import ChatAnthropic
 import Generator_utils
 import os, re
 import random
