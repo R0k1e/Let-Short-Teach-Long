@@ -28,7 +28,6 @@ class Generatorllm:
             self.model_name = self.llm.model_name.split("/")[-1]
         else:
             self.model_name = self.llm.model.split("/")[-1]
-        print("=====Create a summariser successfully!=====")
 
 
     def _formPrompt(self, task):
@@ -68,8 +67,6 @@ class Generatorllm:
         except Exception as e:
             print(e)
             raise GenerateFailedException("summary")
-        print(summary_result)
-        print("=====Summarise successfully!=====")
         return summary_result
     
 
@@ -104,8 +101,6 @@ class Generatorllm:
             print(e)
             raise GenerateFailedException("ask")
         question = question.strip()
-        print(question)
-        print("=====Ask successfully!=====")
         return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
 
     def ask_all_type(self, context, questionMeta: dict) -> dict[str]:
@@ -122,8 +117,6 @@ class Generatorllm:
             print(e)
             raise GenerateFailedException("ask")
         question = question.strip()
-        print(question)
-        print("=====Ask successfully!=====")
         return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
     
     
@@ -176,17 +169,16 @@ class Generatorllm:
         result = ""
         answerList = {"generator": self.model_name}
         for i in range(len(context)):
-                if i == 0:
-                    prompt = self._formPrompt("firstAnswer")
-                    chain = self._formChain(prompt)
-                    result = chain.invoke({"context": context[i], "question": question})
-                else:
-                    prompt = self._formPrompt("followingAnswer")
-                    chain = self._formChain(prompt)
-                    result = chain.invoke({"context": context[i], "answer": result, "question": question})
-                answerList[f"Intermediate input {i}"] = context[i]
-                answerList[f"Intermediate result {i}"] = result
-                print(f"Intermediate result:\n{result}")
+            if i == 0:
+                prompt = self._formPrompt("firstAnswer")
+                chain = self._formChain(prompt)
+                result = chain.invoke({"context": context[i], "question": question})
+            else:
+                prompt = self._formPrompt("followingAnswer")
+                chain = self._formChain(prompt)
+                result = chain.invoke({"context": context[i], "answer": result, "question": question})
+            answerList[f"Intermediate input {i}"] = context[i]
+            answerList[f"Intermediate result {i}"] = result
         return result, answerList
     
 

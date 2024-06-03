@@ -1,6 +1,12 @@
 import json
 import random
 import os
+import argparse
+
+argparser = argparse.ArgumentParser()
+argparser.add_argument('--id', type=int, required=True)
+args = argparser.parse_args()
+
 
 # Path to the input JSONL file
 input_path = 'outputData/LongAlignProcessed/2024-05-18-21-16-05'
@@ -11,20 +17,21 @@ tree_file = os.path.join(input_path, 'tree.jsonl')
 # Path to the output file
 output_file = 'output.json'
 
-# Number of lines to sample
-sample_size = 1
-
 # Read the input JSONL file
 with open(data_file, 'r') as file:
     lines = file.readlines()
+    targetLines = []
+    for line in lines:
+        data = json.loads(line)
+        if data['id'] == args.id:
+            targetLines.append(line)
+            print(data['position'])
     print(len(lines))
 
-# Randomly sample lines
-sampled_lines = random.sample(lines, sample_size)
 
 # Write the sampled lines to the output file
 with open(output_file, 'w') as file:
-    for line in sampled_lines:
+    for line in targetLines:
         sampled_data = json.loads(line)
         data_id = sampled_data['id']
         with open(intermediate_file, 'r') as intermediate:

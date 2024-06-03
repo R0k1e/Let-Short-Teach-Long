@@ -5,10 +5,11 @@ import json
 import fasttext
 from nltk.tokenize import sent_tokenize
 import re
+import threading
 
 
 lang_recognizer = fasttext.load_model('./lid.176.bin')
-
+file_lock = threading.Lock()
 
 def clear(path):
     with open(path, 'w') as file:
@@ -48,24 +49,29 @@ def dump(data_id, generator, path, text, questionMeta, answer, node = None):
     }
 
     with open(path, 'a') as file:
-        json.dump(data, file, ensure_ascii=False)
-        file.write("\n")
+        with file_lock:
+            json.dump(data, file, ensure_ascii=False)
+            file.write("\n")
 
 def dumpTree(data_id, path, sumTree):
     with open(path, 'a') as file:
         result = {"id": data_id}
         levelOrder = sumTree.levelOrderForDump()
         result.update(levelOrder)
-        json.dump(result, file, ensure_ascii=False)
-        file.write("\n")
+        with file_lock:
+            json.dump(result, file, ensure_ascii=False)
+            file.write("\n")
     
 
-def dumpIntermediate(data_id, path, answerList, node):
+def dumpIntermediate(data_id, path, question, answerList, node):
     with open(path, 'a') as file:
-        result = {"id": data_id, "position": f"Level {node.getLevel()} Node {node.getIndex()}"}
+        result = {"id": data_id}
+        result["question"] = question
+        result["position"] = f"Level {node.getLevel()} Node {node.getIndex()}"
         result.update(answerList)
-        json.dump(result, file, ensure_ascii=False)
-        file.write("\n")
+        with file_lock:
+            json.dump(result, file, ensure_ascii=False)
+            file.write("\n")
 
 def docParser(docs : list) -> list[Document]:
     documents = [Document(page_content=doc) for doc in docs]

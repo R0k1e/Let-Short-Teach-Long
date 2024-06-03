@@ -10,3 +10,5 @@ run_pipeline.sh
 requirements.txt
 dslim/
 Jean-Baptiste/
+test*.py
+output*.json

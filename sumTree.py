@@ -1,4 +1,4 @@
-from langchain_text_splitters import TokenTextSplitter
+from langchain_text_splitters import TokenTextSplitter, RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 import random
 from Generatorllm import Generatorllm
@@ -69,8 +69,6 @@ class SumTreeNode:
         self.__children = children
 
     def getSourceText(self):      
-        print(f"Source text of node {self.__level} {self.__index}:")
-        print(self.__sourceTextArr)
         text = ""
         for source in self.__sourceTextArr:
             text+=self.__tree.getTextArray()[source]
@@ -93,7 +91,6 @@ class SumTree:
         self.lang = lang
         self.__chunk_size = chunk_size # define the granularity of the summarisation
         self.__childern_group_capacity = children_group_capacity # define the number of children to be grouped together
-        print(f"chunk_size: {self.__chunk_size}\nchildren_group_capacity: {self.__childern_group_capacity}")
         self.__height=0 # define the height of the tree
         self.__root=self.__buildWithRefine(text) # now refine the summarisation
         self.nodeGraph()
@@ -121,7 +118,6 @@ class SumTree:
         self.type = "text"
         children=[] # list of children
         for i, chunk in enumerate(chunks):
-            print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
             if i == 0:
                 self.summarySize = self.__getSummarySize(chunk)
             child = SumTreeNode(self.__summariser)
@@ -135,8 +131,7 @@ class SumTree:
         while len(parents)>1:
             self.__height+=1
             parents = self.__group(parents)
-        print("=====Build successfully!=====")
-        return parents[0] 
+        return parents[0] # TODO: return the root node
     
 
     def __buildWithRefine(self, text):
@@ -190,17 +185,14 @@ class SumTree:
                 text=group.getChildrenSummarisation()
                 group.summarise(text)
                 parents.append(group)
-        print("=====Group successfully!=====")
         return parents
     
     def __getSummarySize(self, context: str):
         if self.lang == 'en':
             word_count = len(context.split())
-            print(f"summary Size :{word_count}")
             return word_count//(self.__childern_group_capacity+1)
         elif self.lang == 'zh':
             word_count = len(context)
-            print(f"summary Size :{word_count}")
             return word_count//(self.__childern_group_capacity+1)
         return 0
 
@@ -218,7 +210,7 @@ class SumTree:
         while queue:
             node : SumTreeNode = queue.pop(0)
             nodes.append(node)
-            print(f"LEVEL{node.getLevel()} NODE{node.getIndex()}: ")
+            # print(f"LEVEL{node.getLevel()} NODE{node.getIndex()}: ")
             print(node.getSummarisation())
             children = node.getChildren()
             for child in children:
@@ -325,10 +317,23 @@ class SumTree:
                 for child in children:
                     queue.append(child)
             levelNow+=1
-        print(f"Random node: LEVEL{level} NODE{index}")
         return self.getNode(level, index)
     
     def getChildrenGroupCapacity(self):
         return self.__childern_group_capacity
     
-    
+    def getNodeEachLevel(self) -> list[SumTreeNode]:
+        queue = [self.__root]
+        nodes = []
+        levelNow = 0
+        while queue:
+            index = random.randint(0, len(queue)-1)            
+            level_nodes = len(queue)
+            for i in range(level_nodes):
+                node: SumTreeNode = queue.pop(0)
+                children = node.getChildren()
+                for child in children:
+                    queue.append(child)
+            nodes.append(self.getNode(levelNow, index))
+            levelNow+=1
+        return nodes
