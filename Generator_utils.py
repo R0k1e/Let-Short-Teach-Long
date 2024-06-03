@@ -1,9 +1,8 @@
-from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
+from nltk.tokenize import sent_tokenize
 import tiktoken
 import json
 import fasttext
-from nltk.tokenize import sent_tokenize
 import re
 import threading
 
@@ -18,12 +17,8 @@ def clear(path):
 
 def dump(data_id, generator, path, text, questionMeta, answer, node = None):
 
-    if isinstance(generator.llm, ChatOpenAI) and "claude" not in generator.model_name:
-        encoding = tiktoken.encoding_for_model(generator.model_name)
-        num_tokens = len(encoding.encode(text+questionMeta["question"]+answer))
-        length = num_tokens
-    else:
-        length = len(generator.tokenizer.tokenize(text+questionMeta["question"]+answer))
+    
+    length = len(generator.tokenizer.encode(text+questionMeta["question"]+answer))
     
     
     if node is None:
@@ -73,9 +68,9 @@ def dumpIntermediate(data_id, path, question, answerList, node):
             json.dump(result, file, ensure_ascii=False)
             file.write("\n")
 
-def docParser(docs : list) -> list[Document]:
-    documents = [Document(page_content=doc) for doc in docs]
-    return documents
+# def docParser(docs : list) -> list[Document]:
+#     documents = [Document(page_content=doc) for doc in docs]
+#     return documents
 
 def getPrompt(task, lang = 'en'):
     prompt_path = "promptTemplate.json"

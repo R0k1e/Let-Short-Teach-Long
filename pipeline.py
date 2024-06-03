@@ -1,14 +1,9 @@
 from sumTree import SumTree
 from Generatorllm import Generatorllm
+from openai import OpenAI
 import Generator_utils
-from langchain_community.llms import VLLM, VLLMOpenAI
-from langchain_openai import ChatOpenAI
-from transformers import AutoTokenizer
-from transformers import GPT2TokenizerFast
 import concurrent.futures
 import os, json, time, argparse, queue
-import fasttext
-import tiktoken
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
@@ -41,7 +36,7 @@ def pipeline(data_id, llm, tokenizer, text, paths):
                 Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
 
 
-def pipeline_randomNode(data_id, llm, tokenizer, text, path):
+def pipeline_randomNode(data_id, llm, tokenizer, text, paths):
     lang = Generator_utils.identify_language(text.split('\n')[0])
     generator = Generatorllm(llm, tokenizer, lang)
     sumTree = SumTree(text, generator, chunk_size=1024, lang = lang)
@@ -61,11 +56,11 @@ def checkEqualNode(node1, node2):
     return False
 
 
-def pipeline_Level(data_id, llms, tokenizer, text, paths):
+def pipeline_Level(data_id, model, llms, text, paths):
     llm = llms.get()
     try:
         lang = Generator_utils.identify_language(text.split('\n')[0])
-        generator = Generatorllm(llm, tokenizer, lang)
+        generator = Generatorllm(model, llm, lang)
         sumTree = SumTree(text, generator, lang = lang, chunk_size = 2048)
         sumTree.info()
         Generator_utils.dumpTree(data_id, paths["treePath"], sumTree)
@@ -161,15 +156,27 @@ def handle_exceptions(futures):
                 file.write(f"id:{data_id}Caught an exception: {e}\n")
             
 
+def singleThreadDispatcher(model, data_path):
+    llm = OpenAI(
+            api_key="s2l",
+            base_url=f"http://127.0.0.1:{3660}/v1",
+        )
+    llms = queue.Queue()
+    llms.put(llm)
+    paths = constructPath(data_path)
+    with open(data_path, 'r') as file:
+        for i, line in enumerate(file):
+            obj = json.loads(line)
+            text = obj['text']
+            pipeline_Level(i+1, model, llms, text, paths)
+            
 
 def dispatcher(model, data_path, num_gpus = 1):
-    tokenizer = AutoTokenizer.from_pretrained(model)
     llms = queue.Queue()
     for i in range(num_gpus):
-        llm = VLLMOpenAI(
-            openai_api_key="s2l",
-            openai_api_base=f"http://127.0.0.1:{3660+i}/v1",
-            model_name=model
+        llm = OpenAI(
+            api_key="s2l",
+            base_url=f"http://127.0.0.1:{3660+i}/v1",
         )
         llms.put(llm)
     
@@ -182,7 +189,7 @@ def dispatcher(model, data_path, num_gpus = 1):
             for i, line in enumerate(file):
                 obj = json.loads(line)
                 text = obj['text']
-                future = executor.submit(pipeline_Level, i+1, llms, tokenizer, text, paths)
+                future = executor.submit(pipeline_Level, i+1, model, llms, text, paths)
                 futures[future] = i+1
                 if (i + 1) % 100 == 0:
                     handle_exceptions(futures)
@@ -270,14 +277,12 @@ def clearTargetFiles(data_path, min_id):
             
 
 def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
-    tokenizer = AutoTokenizer.from_pretrained(model)
     llms = queue.Queue()
     # llms = []
     for i in range(num_gpus):
-        llm = VLLMOpenAI(
-            openai_api_key="s2l",
-            openai_api_base=f"http://127.0.0.1:{3660+i}/v1",
-            model_name=model
+        llm = OpenAI(
+            api_key="s2l",
+            base_url=f"http://127.0.0.1:{3660+i}/v1",
         )
         llms.put(llm)
     
@@ -290,7 +295,7 @@ def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
                     continue
                 obj = json.loads(line)
                 text = obj['text']
-                future = executor.submit(pipeline_Level, i+1, llms, tokenizer, text, resumePaths)
+                future = executor.submit(pipeline_Level, i+1, model, llms, text, resumePaths)
                 futures[future] = i+1
                 if (i + 1) % 100 == 0 and len(futures) > 0:
                     handle_exceptions(futures)
@@ -303,37 +308,14 @@ if __name__ == "__main__":
     model = args.model
     data_path = args.data
     resume = args.resume
-    model = "gpt-3.5-turbo"
-    # llm = VLLM(
-    #         model="../MiniCPM-2B-sft-bf16",
-    #         trust_remote_code=True,  # mandatory for hf models
-    #         tensor_parallel_size=1,
-    #         top_k=10,
-    #         top_p=0.95,
-    #         temperature=0.8
-    # )
-    gpt = ChatOpenAI(temperature=0, model_name=model)
-    # tokenizer = AutoTokenizer.from_pretrained(model)
-    # tokenizer = GPT2TokenizerFast.from_pretrained('Xenova/claude-tokenizer')
-    encoding = tiktoken.encoding_for_model(model)
-    paths = constructPath(data_path)
-    # vllm needs a tokenizer, gpt does not
-    # generator = Generator(llm, tokenizer=tokenizer)
-    # data_id = 1
-    # with open(data_path, 'r') as file:
-    #     for line in file:
-    #         obj = json.loads(line)
-    #         text = obj['text']
-    #         #lang
-    #         pipeline_randomNode(data_id, generator, text, paths)
-    #         data_id += 1
+    
     if resume:
         if args.resume_path is not None:
             min_id = min(checkFailedData(args.resume_path), checkFailedRefine(args.resume_path), checkFailedTree(args.resume_path))
             paths = clearTargetFiles(args.resume_path, min_id)
             resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
-            #TODO delete and resume
         else:
             raise ValueError("Please provide the path to the data file")
     else:
         dispatcher(model, data_path, num_gpus = 4)
+    # singleThreadDispatcher(model, data_path)

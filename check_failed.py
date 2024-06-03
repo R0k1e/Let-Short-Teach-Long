@@ -1,5 +1,7 @@
 import json
 
+
+# obtain the last successful id in the data generation process
 def checkFailedTree(data_path):
     data_path = data_path + "/tree.jsonl"
     with open(data_path, 'r') as file:

@@ -2,27 +2,22 @@ import json
 import random
 import os
 
-# Path to the input JSONL file
-input_path = 'outputData/LongAlignProcessed/2024-05-18-21-16-05'
+
+# get total number of lines in the file and sample a subset of the data
+input_path = 'outputData/LongAlignProcessed/2024-06-03-20-51-09'
 data_file = os.path.join(input_path, 'longContext.jsonl')
 intermediate_file = os.path.join(input_path, 'refine.jsonl')
 tree_file = os.path.join(input_path, 'tree.jsonl')
-
-# Path to the output file
 output_file = 'output.json'
 
-# Number of lines to sample
 sample_size = 1
 
-# Read the input JSONL file
 with open(data_file, 'r') as file:
     lines = file.readlines()
     print(len(lines))
 
-# Randomly sample lines
 sampled_lines = random.sample(lines, sample_size)
 
-# Write the sampled lines to the output file
 with open(output_file, 'w') as file:
     for line in sampled_lines:
         sampled_data = json.loads(line)

@@ -12,3 +12,6 @@ dslim/
 Jean-Baptiste/
 test*.py
 output*.json
+run.out
+run.sh
+old/

@@ -1,8 +1,6 @@
-from langchain_text_splitters import TokenTextSplitter, RecursiveCharacterTextSplitter
-from langchain_openai import ChatOpenAI
 import random
 from Generatorllm import Generatorllm
-from transformers import AutoTokenizer
+import Generator_utils
 import TFIDFUtils
 #from Summariser_vllm import Summariser
 
@@ -100,9 +98,9 @@ class SumTree:
     # chunk the text
     def __chunk(self, text, overlap=0):
         # text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) 
-        texts = TFIDFUtils.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
+        texts = Generator_utils.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
             
-        print(self.__summariser.llm.model_name)
+        print(self.__summariser.model_name)
         print("=====Chunk successfully!=====")
         print(f"=====Chunk amount: {len(texts)}=====")
         return texts
