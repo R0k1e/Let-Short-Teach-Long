@@ -11,7 +11,7 @@ import os, re
 import random
 
 
-class Generator:
+class Generatorllm:
     def __init__(
             self,
             llm,
@@ -46,6 +46,17 @@ class Generator:
             llm_chain = prompt | self.llm 
 
         return llm_chain
+    
+
+    def generate(self, text: str):
+        prompt = self._formPrompt("generate")
+        llm_chain = self._formChain(prompt)
+        try:
+            result = llm_chain.invoke({"text": text})
+        except Exception as e:
+            print(e)
+            raise GenerateFailedException("generate")
+        return result
 
     def summary(self, text: str, word_count):
         prompt = self._formPrompt("summary")
@@ -60,6 +71,21 @@ class Generator:
         print(summary_result)
         print("=====Summarise successfully!=====")
         return summary_result
+    
+
+    def summaryWithRefine(self, previous: str, text: str, word_count):
+        prompt = self._formPrompt("summaryWithRefine")
+        llm_chain = self._formChain(prompt)
+        
+        try:
+            summary_result = llm_chain.invoke({"previousSummary": previous ,"context": text, "word_count": word_count})
+        except Exception as e:
+            print(e)
+            raise GenerateFailedException("summaryWithRefine")
+        print(summary_result)
+        print("=====Summarise successfully!=====")
+        return summary_result
+
 
     def ask(self, context) -> dict[str]:
         random.seed(time.time())

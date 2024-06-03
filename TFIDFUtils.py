@@ -1,104 +1,88 @@
+from langchain_openai import ChatOpenAI
 from openai import OpenAI
 from nltk.text import TextCollection
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords
-from langchain_text_splitters import TokenTextSplitter
 import jieba
 import json
 import re
 import tiktoken
+import Generator_utils
+from Generatorllm import Generatorllm
 
 
-def sent_tokenize_zh(text):
-    resentencesp = re.compile('([﹒﹔﹖﹗．；。！？]["’”」』]{0,2}|：(?=["‘“「『]{1,2}|$))')
-    s = text
-    slist = []
-    for i in resentencesp.split(s):
-        if resentencesp.match(i) and slist:
-            slist[-1] += i
-        elif i:
-            slist.append(i)
-    return slist
 
-
-def wordsSift(text):
+def wordsSift(text, word_num = 512):
     stops = set(stopwords.words('english'))#blacklist
+    if lang == 'zh':
+        word_tokenize = jieba.lcut
     words = word_tokenize(text)
     words = set(words)
     words = [word for word in words if word not in stops]
-    context = '['
-    for word in words:
-        context += word + ', '
-    context = context[:-2] + ']'
-    prompt = f"You need to sift the following words. You need to discard prepositions, conjunctions, articles and words that have no meanings. Here is the words:\n{context}\nRemenber that the output should be in json format. Here is an example: {{\"sifted_words\": [\"word1\", \"word2\", \"word3\"]}} Your sifted words:"
-    # return prompt
-    return words
+    finalWords = []
+    for i in range(len(words)//word_num):
+        tempWords = words[i*word_num:(i+1)*word_num]
+        context = '['
+        for word in tempWords:
+            context += word + ', '
+        context = context[:-2] + ']'
+        prompt = f"You need to sift the following words. You need to discard prepositions, conjunctions, articles and words that have no meanings. Here is the words:\n{context}\nRemenber that the output should be in json format. Here is an example: {{\"sifted_words\": [\"word1\", \"word2\", \"word3\"]}} Your sifted words:"
+        result = generator.generate(prompt)
+        # client = OpenAI(base_url="")
+        # result = client.chat.completions.create(
+        #     model="gpt-3.5-turbo",
+        #     messages=[
+        #         {"role": "system", "content": "You are a helpful assistant."},
+        #         {"role": "user", "content": f"{prompt}"}
+        #     ]
+        # )
+        # result = result.choices[0].message.content
+        print(result)
+        result = result.replace("\n", "")
+        siftedWords = re.findall(r'\{.*?\}', result)
+        tempWords = json.loads(siftedWords[0])["sifted_words"]
+        finalWords += tempWords
+    finalWords = list(set(finalWords))
+    return finalWords
 
-
-def split_text_on_tokens(text: str, tokenizer, tokens_per_chunk, chunk_overlap = 0) -> list[str]:
-    """Split incoming text and return chunks using tokenizer."""
-    splits: list[str] = []
-    input_ids = tokenizer.encode(text)
-    start_idx = 0
-    cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
-    chunk_ids = input_ids[start_idx:cur_idx]
-    while start_idx < len(input_ids):
-        splits.append(tokenizer.decode(chunk_ids))
-        if cur_idx == len(input_ids):
-            break
-        start_idx += tokens_per_chunk - chunk_overlap
-        cur_idx = min(start_idx + tokens_per_chunk, len(input_ids))
-        chunk_ids = input_ids[start_idx:cur_idx]
-    return splits
-
-
-def splitTextOnSentences(text, tokenizer, max_chunk_length=2048):
-    sents = sent_tokenize(text)
-    processed_sents = []
-    for sent in sents:
-        while len(tokenizer.encode(sent)) > max_chunk_length:
-            texts = split_text_on_tokens(sent, tokenizer, max_chunk_length)
-            processed_sents.append(texts[0])
-            sent = ''.join(texts[1:])
-        if sent:  # This ensures we add the last chunk if it's not empty
-            processed_sents.append(sent)
-    # Chunk sentences
-    chunks = []
-    current_chunk = ""
-    current_length = 0
-    
-    for sent in processed_sents:
-        if len(tokenizer.encode(current_chunk+sent)) >= max_chunk_length:
-            chunks.append(current_chunk)
-            current_chunk = ""
-            current_length = 0
-        current_chunk += sent + " "
-        current_length += len(tokenizer.encode(sent))
-    
-    if current_chunk != "":
-        chunks.append(current_chunk)
-    
-    return chunks
-
-
-def sentenceScore(chunks, words):
+# decreasing order
+def sentenceScore(chunks, siftedWords):
     # chunks = splitTextOnSentences(text)
+    if lang == 'zh':
+        word_tokenize = jieba.lcut
+        sent_tokenize = Generator_utils.sent_tokenize_zh
     corpus=TextCollection([word_tokenize(chunk) for chunk in chunks])
 
-    chunk_scores = []
-    for chunk in chunks:
+    chunk_scores = {}
+    for i, chunk in enumerate(chunks):
         sents = sent_tokenize(chunk)
         sent_scores = {}
         for sent in sents:
             current_words = word_tokenize(sent)
             sent_score = 0
             for current_word in current_words:
-                if current_word in words:
+                if current_word in siftedWords:
                     sent_score += corpus.tf_idf(current_word, corpus)
             sent_scores[sent] = sent_score
         sorted_scores = {k: v for k, v in sorted(sent_scores.items(), key=lambda item: item[1], reverse=True)}
-        chunk_scores.append(sorted_scores)
+        chunk_scores[i] = sorted_scores
     return chunk_scores
+
+
+# def globalNumbering(texts):
+#     text = ""
+#     for tempText in texts:
+#         text += tempText
+#     if lang == 'zh':
+#         sent_tokenize = Generator_utils.sent_tokenize_zh
+#     sents = sent_tokenize(text)
+#     numbering = {}
+#     for i, sent in enumerate(sents):
+#         numbering[sent] = i
+#     return numbering
+
+
+# def markImportant(text, scores):
 
 
 def referenceConstruction(text):
@@ -178,5 +162,20 @@ if __name__ == "__main__":
         #         print(score)
         #         print('-----------------')
     # stopWords()
-    print(referenceExtraction(''))
-    print(referencePropagation(''))
+    # print(referenceExtraction(''))
+    # print(referencePropagation(''))
+    with open('experiment/UltraLink.json', 'r') as f:
+        data = json.load(f)
+        text = data['text']
+    gpt = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo")
+    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    lang = Generator_utils.identify_language(text.split('\n')[0])
+    generator = Generatorllm(gpt, encoding, lang)
+    siftedWords = wordsSift(text)
+    
+    with open("experiment/summary.txt", "a") as f:
+        f.write('\n-----------------\n')
+        f.write(str(siftedWords)+'\n')
+
+    chunks = Generator_utils.splitTextOnSentences(text, generator.tokenizer, lang)
+    sentenceScores = sentenceScore(chunks, siftedWords)
