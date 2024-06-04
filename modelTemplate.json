@@ -2,6 +2,7 @@
     "Meta-Llama-3-8B-Instruct":"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{user_message}<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
     "claude-3-opus-20240229": "{user_message}",
     "claude-3-haiku-20240307":"{user_message}",
+    "claude-3-sonnet-20240229":"{user_message}",
     "gpt-3.5-turbo": "{user_message}",
     "MiniCPM-2B-dpo-bf16": "<用户>{user_message}<AI>",
     "MiniCPM-2B-sft-bf16": "<用户>{user_message}<AI>"

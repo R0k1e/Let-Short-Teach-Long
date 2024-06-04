@@ -15,3 +15,5 @@ output*.json
 run.out
 run.sh
 old/
+hang*.sh
+debug*

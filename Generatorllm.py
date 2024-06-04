@@ -8,6 +8,7 @@ import time
 import tiktoken
 import os
 
+maximum_tokens = 128*1024
 
 class GenerateFailedException(Exception):
     def __init__(self, task):
@@ -46,16 +47,32 @@ class Generatorllm:
 
     def formCompletion(self, prompt):
         length = self.checkLength(prompt)
-        completion = self.client.completions.create(model=self.model, prompt=prompt, max_tokens=4096-length)
-        return completion.choices[0].text
+        completion = self.client.chat.completions.create(
+            model=self.model, 
+            messages= [
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ], 
+            max_tokens=maximum_tokens-length
+        )
+        result = completion.choices[0].message.content
+        with open("debugOutput.txt", "a") as f:
+            f.write("##PROMPT##\n")
+            f.write(prompt+"\n")
+            f.write("##RESPONSE##\n")
+            f.write(result+"\n")
+        return result
     
 
     def checkLength(self, text):
         length = len(self.tokenizer.encode(text))
-        
-        if length > 4096:
-            raise GenerateFailedException("checkLength")
-
+        # breakpoint()
+        # if length > 4096:
+        #     raise GenerateFailedException("checkLength")
+        return length
+    
 
     def generate(self, text: str):
         prompt = self.formPrompt("generate")
@@ -108,6 +125,22 @@ class Generatorllm:
         question = question.strip()
         return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
 
+
+    def askwithMeta(self, context, questionMeta: dict) -> dict[str]:
+        questionCategories = Generator_utils.getPrompt("questionCategory", self.lang)
+        questionCategory = questionCategories[questionMeta["questionCategory"]]
+        comprehensions = Generator_utils.getPrompt("comprehension", self.lang)
+        comprehension = comprehensions[questionMeta["comprehension"]]
+        prompt = self.formPrompt("ask")
+        prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
+        try:
+            question = self.formCompletion(prompt)
+        except Exception as e:
+            print(e)
+            raise GenerateFailedException("ask")
+        question = question.strip()
+        return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
+    
 
     def ask_all_type(self, context, questionMeta: dict) -> dict[str]:
         questionCategories = Generator_utils.getPrompt("questionCategory", self.lang)

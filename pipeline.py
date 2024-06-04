@@ -6,6 +6,8 @@ import concurrent.futures
 import os, json, time, argparse, queue
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+api_key = ""
+base_url = ""
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="model name or path")
@@ -89,6 +91,40 @@ def pipeline_Level(data_id, model, llms, text, paths):
         llms.put(llm)
 
 
+def pipeline_LevelwithComp(data_id, model, llms, text, paths):
+    llm= llms.get()
+    lang = Generator_utils.identify_language(text.split('\n')[0])
+    generator = Generatorllm(model, llm, lang)
+    sumTree = SumTree(text, generator, lang = lang, chunk_size = 2048)
+    sumTree.info()
+    Generator_utils.dumpTree(data_id, paths["treePath"], sumTree)
+    nodes = sumTree.getNodeEachLevel()
+    allNodes = sumTree.levelOrderTraversal()
+    if len(allNodes) < 5: # for the line 340 which is too short with only 4 nodes. 340 causes infinite loop
+        nodes = allNodes
+        while len(nodes) < 5:
+            node = sumTree.getRandomNode()
+            nodes.append(node)
+    else:
+        while len(nodes) < 5:
+            node = sumTree.getRandomNode()
+            if not any(checkEqualNode(node, n) for n in nodes):
+                nodes.append(node)
+    
+    for node in nodes:
+        questionMeta = generator.ask(node.getSummarisation())
+        question =questionMeta['question'] 
+        answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
+        Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node)
+        Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
+        questionMetaforOri = generator.askwithMeta(node.getSourceText(), questionMeta)
+        question =questionMetaforOri['question'] 
+        answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
+        Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node, flag = "askWithSourceText")
+        Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMetaforOri, answer, node, flag = "askWithSourceText")
+    llms.put(llm)
+
+
 # no split
 def pipeline_entire(data_id, llm, tokenizer, text, paths):
     lang = Generator_utils.identify_language(text.split('\n')[0])
@@ -158,8 +194,8 @@ def handle_exceptions(futures):
 
 def singleThreadDispatcher(model, data_path):
     llm = OpenAI(
-            api_key="s2l",
-            base_url=f"http://127.0.0.1:{3660}/v1",
+            api_key=api_key,
+            base_url=base_url,
         )
     llms = queue.Queue()
     llms.put(llm)
@@ -168,15 +204,17 @@ def singleThreadDispatcher(model, data_path):
         for i, line in enumerate(file):
             obj = json.loads(line)
             text = obj['text']
-            pipeline_Level(i+1, model, llms, text, paths)
             
+            pipeline_LevelwithComp(i+1, model, llms, text, paths)
+            
+                
 
 def dispatcher(model, data_path, num_gpus = 1):
     llms = queue.Queue()
     for i in range(num_gpus):
         llm = OpenAI(
-            api_key="s2l",
-            base_url=f"http://127.0.0.1:{3660+i}/v1",
+            api_key=api_key,
+            base_url=base_url,
         )
         llms.put(llm)
     
@@ -218,7 +256,7 @@ def checkFailedTree(data_path):
     return min_id
 
 
-def checkFailedRefine(data_path, taget_num = 5):
+def checkFailedRefine(data_path, target_num = 5):
     data_path = data_path + "/refine.jsonl"
     with open(data_path, 'r') as file:
         max_id = 0
@@ -231,14 +269,14 @@ def checkFailedRefine(data_path, taget_num = 5):
                 max_id = max(max_id, id)
     min_id = 1
     for i in range(1, max_id + 2):
-        if existing_ids.get(i, 0) < taget_num:
+        if existing_ids.get(i, 0) < target_num:
             min_id = i
             break
 
     return min_id
 
 
-def checkFailedData(data_path, taget_num = 5):
+def checkFailedData(data_path, target_num = 5):
     data_path = data_path + "/longContext.jsonl"
     with open(data_path, 'r') as file:
         max_id = 0
@@ -251,7 +289,7 @@ def checkFailedData(data_path, taget_num = 5):
                 max_id = max(max_id, id)
     min_id = 1
     for i in range(1, max_id + 2):
-        if existing_ids.get(i, 0) < taget_num:
+        if existing_ids.get(i, 0) < target_num:
             min_id = i
             break
 
@@ -281,8 +319,8 @@ def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
     # llms = []
     for i in range(num_gpus):
         llm = OpenAI(
-            api_key="s2l",
-            base_url=f"http://127.0.0.1:{3660+i}/v1",
+            api_key=api_key,
+            base_url=base_url,
         )
         llms.put(llm)
     
@@ -304,18 +342,39 @@ def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
         concurrent.futures.wait(futures)
 
 
+def resumeSingleThread(model, data_path, resumePaths, min_id):
+    llm = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
+    llms = queue.Queue()
+    llms.put(llm)
+    with open(data_path, 'r') as file:
+        for i, line in enumerate(file):
+            if i+1 < min_id:
+                continue
+            obj = json.loads(line)
+            text = obj['text']
+            
+            pipeline_LevelwithComp(i+1, model, llms, text, paths)
+
+
 if __name__ == "__main__":
     model = args.model
     data_path = args.data
     resume = args.resume
+    target_num = 10
+    with open("debugOutput.txt", "w") as f:
+            f.write("")
     
     if resume:
         if args.resume_path is not None:
-            min_id = min(checkFailedData(args.resume_path), checkFailedRefine(args.resume_path), checkFailedTree(args.resume_path))
+            min_id = min(checkFailedData(args.resume_path, target_num=target_num), checkFailedRefine(args.resume_path,target_num=target_num), checkFailedTree(args.resume_path))
             paths = clearTargetFiles(args.resume_path, min_id)
-            resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
+            # resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
+            resumeSingleThread(model, data_path, paths, min_id)
         else:
             raise ValueError("Please provide the path to the data file")
     else:
-        dispatcher(model, data_path, num_gpus = 4)
-    # singleThreadDispatcher(model, data_path)
+        singleThreadDispatcher(model, data_path)
+        # dispatcher(model, data_path, num_gpus = 4)

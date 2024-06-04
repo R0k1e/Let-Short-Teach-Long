@@ -15,7 +15,7 @@ def clear(path):
         file.write("")
 
 
-def dump(data_id, generator, path, text, questionMeta, answer, node = None):
+def dump(data_id, generator, path, text, questionMeta, answer, node = None, flag = "normal"):
 
     
     length = len(generator.tokenizer.encode(text+questionMeta["question"]+answer))
@@ -33,6 +33,7 @@ def dump(data_id, generator, path, text, questionMeta, answer, node = None):
         "id": data_id,
         "generator" : generator.model_name,
         "position": f"Level {level} Node {index}",
+        "flag": flag,
         "question": {
             "question": questionMeta["question"],
             "questionCategory": questionMeta["questionCategory"],
@@ -58,9 +59,10 @@ def dumpTree(data_id, path, sumTree):
             file.write("\n")
     
 
-def dumpIntermediate(data_id, path, question, answerList, node):
+def dumpIntermediate(data_id, path, question, answerList, node, flag = "normal"):
     with open(path, 'a') as file:
         result = {"id": data_id}
+        result["flag"] = flag
         result["question"] = question
         result["position"] = f"Level {node.getLevel()} Node {node.getIndex()}"
         result.update(answerList)

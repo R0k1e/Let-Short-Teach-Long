@@ -188,11 +188,14 @@ class SumTree:
     def __getSummarySize(self, context: str):
         if self.lang == 'en':
             word_count = len(context.split())
-            return word_count//(self.__childern_group_capacity+1)
+            word_count = word_count//(self.__childern_group_capacity+1)
         elif self.lang == 'zh':
             word_count = len(context)
-            return word_count//(self.__childern_group_capacity+1)
-        return 0
+            word_count = word_count//(self.__childern_group_capacity+1)
+            if word_count<300:
+                word_count = 300
+        return word_count
+        
 
     # get original text -- for efficiency
     def getText(self):
