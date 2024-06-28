@@ -1,22 +1,25 @@
 from openai import OpenAI
-from transformers import GPT2TokenizerFast
-from transformers import AutoTokenizer
+from transformers import GPT2TokenizerFast, AutoTokenizer
+from nltk.text import TextCollection
+from nltk.corpus import stopwords
 import Generator_utils
-import re
 import random
 import time
 import tiktoken
-import os
+import nltk
+import jieba
+import json
+import re
 
-maximum_tokens = 128*1024
+maximum_tokens = 4*1024
 
-class GenerateFailedException(Exception):
-    def __init__(self, task):
-        self.task =task
+# class GenerateFailedException(Exception):
+#     def __init__(self, task):
+#         self.task =task
 
     
-    def __str__(self):
-        return f"Failed to finish {self.task}"
+#     def __str__(self):
+#         return f"Failed to finish {self.task}"
     
 
 class Generatorllm:
@@ -47,6 +50,11 @@ class Generatorllm:
 
     def formCompletion(self, prompt):
         length = self.checkLength(prompt)
+        while self.checkLength(prompt) > maximum_tokens-20:
+            prompt = prompt[:-10]
+        length = self.checkLength(prompt)
+        # result = self.client.completions.create(model = self.model, prompt = prompt, max_tokens = maximum_tokens-length)
+        # result = result.choices[0].text
         completion = self.client.chat.completions.create(
             model=self.model, 
             messages= [
@@ -58,11 +66,16 @@ class Generatorllm:
             max_tokens=maximum_tokens-length
         )
         result = completion.choices[0].message.content
+        
         with open("debugOutput.txt", "a") as f:
             f.write("##PROMPT##\n")
             f.write(prompt+"\n")
+            f.write("##LENGTH##\n")
+            f.write(str(self.checkLength(prompt))+"\n")
             f.write("##RESPONSE##\n")
             f.write(result+"\n")
+            f.write("##LENGTH##\n")
+            f.write(str(self.checkLength(result))+"\n")
         return result
     
 
@@ -77,33 +90,23 @@ class Generatorllm:
     def generate(self, text: str):
         prompt = self.formPrompt("generate")
         prompt = prompt.format(text=text)
-        try:
-            result = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("generate")
+        
+        result = self.formCompletion(prompt)
+
         return result
 
 
     def summary(self, text: str, word_count):
         prompt = self.formPrompt("summary")
         prompt = prompt.format(context=text, word_count=word_count)
-        try: 
-            result = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("summary")
+        result = self.formCompletion(prompt)
         return result
     
 
     def summaryWithRefine(self, previous: str, text: str, word_count):
         prompt = self.formPrompt("summaryWithRefine")
         prompt = prompt.format(previousSummary=previous, context=text, word_count=word_count)
-        try:
-            result = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("summaryWithRefine")
+        result = self.formCompletion(prompt)
         return result
 
 
@@ -117,11 +120,7 @@ class Generatorllm:
         comprehension = comprehensions[comprehensionKey]
         prompt = self.formPrompt("ask")
         prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
-        try:
-            question = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("ask")
+        question = self.formCompletion(prompt)
         question = question.strip()
         return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
 
@@ -133,11 +132,7 @@ class Generatorllm:
         comprehension = comprehensions[questionMeta["comprehension"]]
         prompt = self.formPrompt("ask")
         prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
-        try:
-            question = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("ask")
+        question = self.formCompletion(prompt)
         question = question.strip()
         return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
     
@@ -149,11 +144,7 @@ class Generatorllm:
         comprehension = comprehensions[questionMeta["comprehension"]]
         prompt = self.formPrompt("ask")
         prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
-        try:
-            question = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("ask")
+        question = self.formCompletion(prompt)
         question = question.strip()
         return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
     
@@ -161,11 +152,7 @@ class Generatorllm:
     def identifyType(self, context):
         prompt = self.formPrompt("identifyType")
         prompt = prompt.format(context=context)
-        try:
-            result = self.formCompletion(prompt)
-        except Exception as e:
-            print(e)
-            raise GenerateFailedException("identifyType")
+        result = self.formCompletion(prompt)
         print(result)
         match = re.search(r'Type:\s*(.+)', result)
         if match:
@@ -174,7 +161,7 @@ class Generatorllm:
             return textType_name
         else:
             print("textType Name not found.")
-            raise GenerateFailedException("identifyType")
+            raise Exception("textType Name not found.")
 
 
     def mr_map(self, context: list[str], question):      
@@ -262,3 +249,110 @@ class Generatorllm:
         prompt = prompt.format(context=context, answer=previousAnswer, question=question)
         result = self.formCompletion(prompt)
         return result
+    
+
+    #TF_IDF components
+    def wordsSift(self, text, word_num = 400):
+        stops = set(stopwords.words('english'))#blacklist
+        if self.lang == 'zh':
+            words = jieba.lcut(text)
+        else :
+            words = nltk.tokenize.word_tokenize(text)
+        words = set(words)
+        words = [word for word in words if word not in stops]
+        finalWords = []
+        for i in range(len(words)//word_num):
+            tempWords = words[i*word_num:(i+1)*word_num]
+            context = '['
+            for word in tempWords:
+                context += word + ', '
+            context = context[:-2] + ']'
+            prompt = self.formPrompt("wordsSift")
+            prompt = prompt.format(context = context)
+            result = self.formCompletion(prompt)
+            result = result.replace("\n", "")
+            siftedWords = re.findall(r'\{.*?\}', result)
+            tempWords = json.loads(siftedWords[0])["sifted_words"]
+            finalWords += tempWords
+        finalWords = list(set(finalWords))
+        return finalWords
+
+    # decreasing order
+    def sentenceScore(self, chunks, siftedWords):
+        # chunks = splitTextOnSentences(text)
+        word_tokenize = nltk.tokenize.word_tokenize
+        sent_tokenize = nltk.tokenize.sent_tokenize
+        if self.lang == 'zh':
+            word_tokenize = jieba.lcut
+            sent_tokenize = Generator_utils.sent_tokenize_zh
+        corpus=TextCollection([word_tokenize(chunk) for chunk in chunks])
+
+        chunk_scores = {}
+        for i, chunk in enumerate(chunks):
+            sents = sent_tokenize(chunk)
+            sent_scores = []
+            for sent in sents:
+                current_words = word_tokenize(sent)
+                sent_score = 0
+                for current_word in current_words:
+                    if current_word in siftedWords:
+                        sent_score += corpus.tf_idf(current_word, corpus)
+                sent_scores.append({"sent": sent, "score": sent_score})
+            # sorted_scores = {k: v for k, v in sorted(sent_scores.items(), key=lambda item: item[1], reverse=True)}
+            chunk_scores[i] = sent_scores
+        return chunk_scores
+
+
+    def referenceConstruction(self, text):
+        if self.lang == 'zh':
+            sentenses = Generator_utils.sent_tokenize_zh(text)
+        else:
+            sentenses = nltk.tokenize.sent_tokenize(text)
+        context = ''
+        for i, sentense in enumerate(sentenses):
+            sentense = sentense.replace("\n", "")
+            sentenseTemp = str(i+1)+'. '+sentense + " "
+            context += sentenseTemp
+    
+        prompt = self.formPrompt("referenceConstruction")
+        prompt = prompt.format(context = context)
+        references = self.formCompletion(prompt)
+        
+        return references
+    
+
+    def referenceConstructionwithRefine(self, previous: str, text: str):
+        if self.lang == 'zh':
+            sentenses = Generator_utils.sent_tokenize_zh(text)
+        else:
+            sentenses = nltk.tokenize.sent_tokenize(text)
+        context = ''
+        for i, sentense in enumerate(sentenses):
+            sentense = sentense.replace("\n", "")
+            sentenseTemp = str(i+1)+'. '+sentense + " "
+            context += sentenseTemp
+    
+        prompt = self.formPrompt("referenceConstructionwithRefine")
+        prompt = prompt.format(previousSummary = previous, context = context)
+        references = self.formCompletion(prompt)
+        
+        return references
+
+
+    def referenceExtraction(self, text, sent_score):
+        # text = "The authors present an open-source multilingual supervised fine-tuning dataset to improve the multilingual abilities of large language models (LLMs) (reference: 3). They introduce a knowledge-grounded data augmentation approach and demonstrate the strong cross-lingual transfer capabilities of modern LLMs, leading to substantial pruning of language-agnostic supervised fine-tuning data without performance degradation (reference: 5, 6, 7). The resulting UltraLink dataset comprises approximately 1 million samples across five languages and outperforms several representative baselines across various tasks (reference: 8, 9). The authors also propose a new approach to construct multilingual supervised fine-tuning data, emphasizing higher cultural diversity and pruned data volume (reference: 23, 24, 25, 28, 30). They engage in automatically generating multilingual supervised fine-tuning data and emphasize the importance of considering cultural diversity and integrating language-agnostic universal data (reference: 33, 34). The authors propose a data construction framework involving two pipelines and employ a knowledge-grounded data augmentation method based on Wikipedia dumps to improve cultural diversity (reference: 35, 37, 39, 40, 41). They use prompts to generate multi-turn dialogues conditioned on provided cultural backgrounds and dialogue history (reference: 49, 50, 51, 57, 58). The authors also propose two types of subsequent questions to improve the diversity of constructed dialogues (reference: 82, 83, 84)."
+
+        result = text.replace("\n", "")
+        references_ori = re.findall(r'\{.*?\}', result)
+        references_ori = json.loads(references_ori[0])
+        sent_scores = []
+        for sent, references in references_ori.items():
+            temp_score = {"sent": sent, "score": 0}
+            for reference in references:
+                temp_score["score"] += sent_score[int(reference)-1]["score"]
+            sent_scores.append(temp_score)
+        return sent_scores
+    
+
+
+        

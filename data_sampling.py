@@ -4,7 +4,7 @@ import os
 
 
 # get total number of lines in the file and sample a subset of the data
-input_path = 'outputData/LongAlignProcessed/2024-06-03-20-51-09'
+input_path = 'outputData/LongAlignProcessed/LongAlignMinicpmSft'
 data_file = os.path.join(input_path, 'longContext.jsonl')
 intermediate_file = os.path.join(input_path, 'refine.jsonl')
 tree_file = os.path.join(input_path, 'tree.jsonl')

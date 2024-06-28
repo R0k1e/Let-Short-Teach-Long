@@ -18,7 +18,7 @@ for element in "${deviceArray[@]}"
 do
     export CUDA_VISIBLE_DEVICES=$element
     port_num=$((3660+index))
-    python -m vllm.entrypoints.openai.api_server --model /data/public/wangshuo/LongContext/model/openbmb/MiniCPM-2B-sft-bf16 --dtype auto --api-key s2l --port $port_num --host 127.0.0.1 --trust-remote-code&
+    python -m vllm.entrypoints.openai.api_server --model MiniCPM-2B-sft-bf16 --dtype auto --api-key s2l --port $port_num --host 127.0.0.1 --trust-remote-code&
     pids+=($!)
     index=$((index+1))
 done

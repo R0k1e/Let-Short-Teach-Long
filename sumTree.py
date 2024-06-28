@@ -15,6 +15,7 @@ class SumTreeNode:
         self.__index = 0
         self.__sourceTextArr = []
         self.__tree= None
+        self.sentScores = []
 
 
     # summarise the text
@@ -28,6 +29,9 @@ class SumTreeNode:
     # return the summarisation
     def getSummarisation(self) -> str:
         return self.__summarisation
+    
+    def setSummarisation(self, summarisation):
+        self.__summarisation = summarisation
     
     # obtain the children of the node
     def getChildren(self):
@@ -49,6 +53,12 @@ class SumTreeNode:
             text+=child.getSummarisation()
         
         return text
+    
+    def getChildrenSentScores(self):
+        scores = []
+        for child in self.__children:
+            scores+=child.sentScores
+        return scores
     
     def getChildrenSize(self):
         return len(self.__children)
@@ -82,33 +92,33 @@ class SumTreeNode:
 class SumTree:
     def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3, lang = 'en'):
         # self.text = text # save memory -- for efficiency
-        self.__summariser : Generatorllm= summariser
+        self.summariser = summariser
         self.type=""
-        self.__textArray=[]
+        self.textArray=[]
         self.summarySize = 0
         self.lang = lang
-        self.__chunk_size = chunk_size # define the granularity of the summarisation
-        self.__childern_group_capacity = children_group_capacity # define the number of children to be grouped together
-        self.__height=0 # define the height of the tree
-        self.__root=self.__buildWithRefine(text) # now refine the summarisation
+        self.chunk_size = chunk_size # define the granularity of the summarisation
+        self.childern_group_capacity = children_group_capacity # define the number of children to be grouped together
+        self.height=0 # define the height of the tree
+        self.root=self.buildWithRefine(text) # now refine the summarisation
         self.nodeGraph()
         print("=====Create a SumTree successfully!=====")
     
 
     # chunk the text
-    def __chunk(self, text, overlap=0):
+    def chunk(self, text, overlap=0):
         # text_splitter = TokenTextSplitter.from_huggingface_tokenizer(self.__summariser.tokenizer, chunk_size=self.__chunk_size, chunk_overlap=overlap) 
-        texts = Generator_utils.split_text_on_tokens(text, self.__summariser.tokenizer, self.__chunk_size, overlap)
+        texts = Generator_utils.split_text_on_tokens(text, self.summariser.tokenizer, self.chunk_size, overlap)
             
-        print(self.__summariser.model_name)
+        print(self.summariser.model_name)
         print("=====Chunk successfully!=====")
         print(f"=====Chunk amount: {len(texts)}=====")
         return texts
     
     # build the tree
-    def __build(self, text):
-        chunks = self.__chunk(text)
-        self.__textArray=chunks
+    def build(self, text):
+        chunks = self.chunk(text)
+        self.textArray=chunks
         # try:
         #     self.type = self.__summariser.identifyType(random.choice(chunks))
         # except Exception as e:
@@ -117,24 +127,24 @@ class SumTree:
         children=[] # list of children
         for i, chunk in enumerate(chunks):
             if i == 0:
-                self.summarySize = self.__getSummarySize(chunk)
-            child = SumTreeNode(self.__summariser)
+                self.summarySize = self.getSummarySize(chunk)
+            child = SumTreeNode(self.summariser)
             child.setTree(self)
             child.summarise(chunk)
             child.getSourceTextArr().append(i)
             children.append(child)
-        parents = self.__group(children)
+        parents = self.group(children)
         if len(children) != 1 :
-            self.__height+=1
+            self.height+=1
         while len(parents)>1:
-            self.__height+=1
-            parents = self.__group(parents)
+            self.height+=1
+            parents = self.group(parents)
         return parents[0] # TODO: return the root node
     
 
-    def __buildWithRefine(self, text):
-        chunks = self.__chunk(text)
-        self.__textArray=chunks
+    def buildWithRefine(self, text):
+        chunks = self.chunk(text)
+        self.textArray=chunks
         # try:
         #     self.type = self.__summariser.identifyType(random.choice(chunks))
         # except Exception as e:
@@ -144,36 +154,36 @@ class SumTree:
         for i, chunk in enumerate(chunks):
             print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
             
-            child = SumTreeNode(self.__summariser)
+            child = SumTreeNode(self.summariser)
             child.setTree(self)
             if i == 0:
-                self.summarySize = self.__getSummarySize(chunk)
+                self.summarySize = self.getSummarySize(chunk)
                 child.summarise(chunk)
             else: 
                 child.summariseWithRefine(children[i-1].getSummarisation(), chunk)
             child.getSourceTextArr().append(i)
             children.append(child)
-        parents = self.__group(children)
+        parents = self.group(children)
         if len(children) != 1 :
-            self.__height+=1
+            self.height+=1
         while len(parents)>1:
-            self.__height+=1
-            parents = self.__group(parents)
+            self.height+=1
+            parents = self.group(parents)
         print("=====Build successfully!=====")
         return parents[0] 
     
 
     # group the children and form the parent node
-    def __group(self, children: list):
+    def group(self, children: list):
         if len(children)==1: # root node
             return children
         
         parents = []
         for i in range(len(children)):
-            if i%self.__childern_group_capacity==0:
-                group = SumTreeNode(self.__summariser)
+            if i%self.childern_group_capacity==0:
+                group = SumTreeNode(self.summariser)
                 group.setTree(self)
-                group.setChildren(children[i:i+self.__childern_group_capacity])
+                group.setChildren(children[i:i+self.childern_group_capacity])
 
                 for child in group.getChildren():
                     for source in child.getSourceTextArr():
@@ -185,29 +195,31 @@ class SumTree:
                 parents.append(group)
         return parents
     
-    def __getSummarySize(self, context: str):
+    def getSummarySize(self, context: str):
         if self.lang == 'en':
             word_count = len(context.split())
-            word_count = word_count//(self.__childern_group_capacity+1)
-        elif self.lang == 'zh':
-            word_count = len(context)
-            word_count = word_count//(self.__childern_group_capacity+1)
+            word_count = word_count//(self.childern_group_capacity+1)
             if word_count<300:
                 word_count = 300
+        elif self.lang == 'zh':
+            word_count = len(context)
+            word_count = word_count//(self.childern_group_capacity+1)
+        else:
+            word_count = 300 
         return word_count
         
 
     # get original text -- for efficiency
     def getText(self):
         text=""
-        for t in self.__textArray:
+        for t in self.textArray:
             text+=t
         return text
     
     # level order traversal
     def levelOrderTraversal(self) -> list[SumTreeNode]:
         nodes = []
-        queue = [self.__root]
+        queue = [self.root]
         while queue:
             node : SumTreeNode = queue.pop(0)
             nodes.append(node)
@@ -220,11 +232,11 @@ class SumTree:
         return nodes
     
     def levelOrderForDump(self):
-        queue = [self.__root]
-        result = {"Height": self.__height, "Type": self.type, "Chunk size": self.__chunk_size, "Children group capacity": self.__childern_group_capacity, "summarySize": self.summarySize}
+        queue = [self.root]
+        result = {"Height": self.height, "Type": self.type, "Chunk size": self.chunk_size, "Children group capacity": self.childern_group_capacity, "summarySize": self.summarySize}
         while queue:
             node : SumTreeNode = queue.pop(0)
-            if node.getLevel() == self.__height: 
+            if node.getLevel() == self.height: 
                 result[f"LEVEL{node.getLevel()} NODE{node.getIndex()} Input"] = node.getSourceText()
             else:
                 result[f"LEVEL{node.getLevel()} NODE{node.getIndex()} Input"] = node.getChildrenSummarisation()
@@ -238,13 +250,13 @@ class SumTree:
     # print the tree structure
     def nodeGraph(self):
         print("=====Node Graph=====")
-        queue = [self.__root]
+        queue = [self.root]
         level=0
         while queue:
             level_nodes = len(queue)
             for i in range(level_nodes):
-                node: SumTreeNode = queue.pop(0)
-                if node is self.__root: 
+                node = queue.pop(0)
+                if node is self.root: 
                     print(f"LEVEL0: ROOT", end=" ")
                     node.setPosition(0, 0)
                 else:
@@ -260,20 +272,20 @@ class SumTree:
 
     # print the information of the tree
     def info(self):
-        print(f"Height: {self.__height}")
+        print(f"Height: {self.height}")
         print(f"Type: {self.type}")
-        print(f"Chunk size: {self.__chunk_size}")
-        print(f"Children group capacity: {self.__childern_group_capacity}")
+        print(f"Chunk size: {self.chunk_size}")
+        print(f"Children group capacity: {self.childern_group_capacity}")
         print(f"Text length: {len(self.getText())}")
-        print(f"Text array length: {len(self.__textArray)}")
-        print(f"Root summarisation: {self.__root.getSummarisation()}")
+        print(f"Text array length: {len(self.textArray)}")
+        print(f"Root summarisation: {self.root.getSummarisation()}")
         self.nodeGraph()
 
     # obtain the node at the specific level and index
     def getNode(self, level, index) -> SumTreeNode:
         if level == 0:
-            return self.__root
-        queue = [self.__root]
+            return self.root
+        queue = [self.root]
         current_level = 0
         while queue:
             if current_level == level:
@@ -288,10 +300,10 @@ class SumTree:
         return None
 
     def getRoot(self) -> SumTreeNode:
-        return self.__root
+        return self.root
     
     def getTextArray(self):
-        return self.__textArray
+        return self.textArray
     
     def getSourceSplitText(self, nodes : list[SumTreeNode]) -> list[str]:
         textArr = []
@@ -301,11 +313,11 @@ class SumTree:
                 if i not in textArr:
                     textArr.append(i)
         
-        return [self.__textArray[i] for i in textArr]
+        return [self.textArray[i] for i in textArr]
 
     def getRandomNode(self) -> SumTreeNode:
-        level = random.randint(0, self.__height)
-        queue = [self.__root]
+        level = random.randint(0, self.height)
+        queue = [self.root]
         levelNow = 0
         while queue:
             if levelNow == level:
@@ -321,10 +333,10 @@ class SumTree:
         return self.getNode(level, index)
     
     def getChildrenGroupCapacity(self):
-        return self.__childern_group_capacity
+        return self.childern_group_capacity
     
     def getNodeEachLevel(self) -> list[SumTreeNode]:
-        queue = [self.__root]
+        queue = [self.root]
         nodes = []
         levelNow = 0
         while queue:
@@ -338,3 +350,81 @@ class SumTree:
             nodes.append(self.getNode(levelNow, index))
             levelNow+=1
         return nodes
+    
+
+class SumTree_TFIDF(SumTree):
+    def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3, lang = 'en'):
+        super().__init__(text, summariser, chunk_size, children_group_capacity, lang)
+    
+
+    def buildWithRefine(self, text):
+        chunks = self.chunk(text)
+        self.textArray=chunks
+        # try:
+        #     self.type = self.__summariser.identifyType(random.choice(chunks))
+        # except Exception as e:
+        #     print(e)
+        self.type = "text"
+        siftedWords = self.summariser.wordsSift(text)
+        sentScores = self.summariser.sentenceScore(chunks, siftedWords)
+        children=[] # list of children
+        for i, chunk in enumerate(chunks):
+            print(f"Chunk {i+1}/{len(chunks)}: {len(chunk)} characters")
+            
+            child = SumTreeNode(self.summariser)
+            child.setTree(self)
+            summary = ""
+            if i == 0:
+                self.summarySize = self.getSummarySize(chunk)
+                references = self.summariser.referenceConstruction(chunk)
+                child.sentScores = self.summariser.referenceExtraction(references, sentScores[i])
+                for item in child.sentScores:
+                    summary += item["sent"]
+                    summary += " "
+                child.setSummarisation(summary)
+            else: 
+                references = self.summariser.referenceConstructionwithRefine(children[i-1].getSummarisation(), chunk)
+                child.sentScores = self.summariser.referenceExtraction(references, sentScores[i])
+                for item in child.sentScores:
+                    summary += item["sent"]
+                    summary += " "
+                child.setSummarisation(summary)
+            child.getSourceTextArr().append(i)
+            children.append(child)
+        parents = self.group(children)
+        if len(children) != 1 :
+            self.height+=1
+        while len(parents)>1:
+            self.height+=1
+            parents = self.group(parents)
+        print("=====Build successfully!=====")
+        return parents[0]
+
+    
+
+    def group(self, children: list):
+        if len(children)==1: # root node
+            return children
+        
+        parents = []
+        for i in range(len(children)):
+            if i%self.childern_group_capacity==0:
+                group = SumTreeNode(self.summariser)
+                group.setTree(self)
+                group.setChildren(children[i:i+self.childern_group_capacity])
+
+                for child in group.getChildren():
+                    for source in child.getSourceTextArr():
+                        group.getSourceTextArr().append(source)
+                    child.setParent(group)
+                
+                text=group.getChildrenSummarisation()
+                references = self.summariser.referenceConstruction(text)
+                summary = ""
+                group.sentScores = self.summariser.referenceExtraction(references, group.getChildrenSentScores())
+                for item in group.sentScores:
+                    summary += item["sent"]
+                    summary += " "
+                group.setSummarisation(summary)
+                parents.append(group)
+        return parents

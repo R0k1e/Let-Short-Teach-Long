@@ -6,8 +6,8 @@ import concurrent.futures
 import os, json, time, argparse, queue
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-api_key = ""
-base_url = ""
+api_key = "s2l"
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="model name or path")
@@ -182,7 +182,8 @@ def constructPath(data_path):
     return paths
 
 
-def handle_exceptions(futures):
+def handle_exceptions(futures, model, llms, data_file, paths):
+    err_tasks = []
     for future in concurrent.futures.as_completed(futures.keys()):
         data_id = futures[future]
         try:
@@ -190,7 +191,37 @@ def handle_exceptions(futures):
         except Exception as e:
             with open("error_log.txt", "a") as file:
                 file.write(f"id:{data_id}Caught an exception: {e}\n")
+            err_tasks.append(future)
+    
+    while len(err_tasks) > 0:
+        for err_task in err_tasks:
+            data_id = futures[err_task]
+            delete_backoff(data_id, paths)
+            try:
+                for i, line in enumerate(data_file):
+                    if i+1 == data_id:
+                        obj = json.loads(line)
+                        text = obj['text']
+                        future = pipeline_Level(i+1, model, llms, text, paths)
+                        err_tasks.remove(err_task)
+            except Exception as e:
+                with open("error_log.txt", "a") as file:
+                    file.write(f"id:{data_id}Caught an exception: {e}\n")
             
+
+def delete_backoff(id, paths):
+    for path in paths.values():
+        with open(path, 'r') as file:
+            lines = file.readlines()
+            for i, line in enumerate(lines):
+                obj = json.loads(line)
+                if obj['id'] == id:
+                    del lines[i]
+                    break
+        with open(path, 'w') as file:
+            for line in lines:
+                file.write(line)
+
 
 def singleThreadDispatcher(model, data_path):
     llm = OpenAI(
@@ -214,7 +245,7 @@ def dispatcher(model, data_path, num_gpus = 1):
     for i in range(num_gpus):
         llm = OpenAI(
             api_key=api_key,
-            base_url=base_url,
+            base_url = f"http://127.0.0.1:{3660+i}/v1",
         )
         llms.put(llm)
     
@@ -229,11 +260,11 @@ def dispatcher(model, data_path, num_gpus = 1):
                 text = obj['text']
                 future = executor.submit(pipeline_Level, i+1, model, llms, text, paths)
                 futures[future] = i+1
-                if (i + 1) % 100 == 0:
-                    handle_exceptions(futures)
+                if (i + 1) % (10*num_gpus) == 0:
+                    handle_exceptions(futures, model, llms, file, paths)
                     futures = {}
-        handle_exceptions(futures)
-        concurrent.futures.wait(futures)
+            handle_exceptions(futures, model, llms, file, paths)
+            concurrent.futures.wait(futures)
 
 
 def checkFailedTree(data_path):
@@ -302,7 +333,7 @@ def clearTargetFile(data_path, min_id):
     with open(data_path, 'w') as file:
         for line in lines:
             obj = json.loads(line)
-            if obj['id'] <= min_id:
+            if obj['id'] < min_id:
                 file.write(line)
 
 
@@ -320,7 +351,7 @@ def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
     for i in range(num_gpus):
         llm = OpenAI(
             api_key=api_key,
-            base_url=base_url,
+            base_url=f"http://127.0.0.1:{3660+i}/v1",
         )
         llms.put(llm)
     
@@ -335,11 +366,11 @@ def resumeDispatcher(model, data_path, resumePaths, min_id, num_gpus = 1):
                 text = obj['text']
                 future = executor.submit(pipeline_Level, i+1, model, llms, text, resumePaths)
                 futures[future] = i+1
-                if (i + 1) % 100 == 0 and len(futures) > 0:
-                    handle_exceptions(futures)
+                if (i + 1) % (10*num_gpus) == 0 and len(futures) > 0:
+                    handle_exceptions(futures, model, llms, file, paths)
                     futures = {}
-        handle_exceptions(futures)
-        concurrent.futures.wait(futures)
+            handle_exceptions(futures, model, llms, file, paths)
+            concurrent.futures.wait(futures)
 
 
 def resumeSingleThread(model, data_path, resumePaths, min_id):
@@ -363,7 +394,7 @@ if __name__ == "__main__":
     model = args.model
     data_path = args.data
     resume = args.resume
-    target_num = 10
+    target_num = 5
     with open("debugOutput.txt", "w") as f:
             f.write("")
     
@@ -371,10 +402,10 @@ if __name__ == "__main__":
         if args.resume_path is not None:
             min_id = min(checkFailedData(args.resume_path, target_num=target_num), checkFailedRefine(args.resume_path,target_num=target_num), checkFailedTree(args.resume_path))
             paths = clearTargetFiles(args.resume_path, min_id)
-            # resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
-            resumeSingleThread(model, data_path, paths, min_id)
+            resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
+            # resumeSingleThread(model, data_path, paths, min_id)
         else:
             raise ValueError("Please provide the path to the data file")
     else:
-        singleThreadDispatcher(model, data_path)
-        # dispatcher(model, data_path, num_gpus = 4)
+        # singleThreadDispatcher(model, data_path)
+        dispatcher(model, data_path, num_gpus = 4)

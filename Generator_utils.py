@@ -145,7 +145,6 @@ def splitTextOnSentences(text: str, tokenizer, lang = 'en', max_chunk_length = 2
     chunks = []
     current_chunk = ""
     current_length = 0
-    
     for sent in processed_sents:
         if len(tokenizer.encode(current_chunk+sent)) >= max_chunk_length:
             chunks.append(current_chunk)

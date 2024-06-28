@@ -35,7 +35,7 @@ def checkFailedRefine(data_path, taget_num = 5):
                 max_id = max(max_id, id)
     min_id = 1
     for i in range(1, max_id + 2):
-        if existing_ids.get(i, 0) < taget_num:
+        if existing_ids.get(i, 0) != taget_num:
             min_id = i
             break
 
@@ -55,7 +55,7 @@ def checkFailedData(data_path, taget_num = 5):
                 max_id = max(max_id, id)
     min_id = 1
     for i in range(1, max_id + 2):
-        if existing_ids.get(i, 0) < taget_num:
+        if existing_ids.get(i, 0) != taget_num:
             min_id = i
             break
 
@@ -72,7 +72,7 @@ def getData(dataPath, id):
 
 
 if __name__ == "__main__":
-    data_path = "outputData/LongAlignProcessed/2024-05-18-21-16-05"
+    data_path = "outputData/LongAlignProcessed/2024-06-06-20-00-29"
     failed_tree = checkFailedTree(data_path)
     failed_refine = checkFailedRefine(data_path)
     failed_data = checkFailedData(data_path)
