@@ -49,6 +49,28 @@ def dump(data_id, generator, path, text, questionMeta, answer, node = None, flag
             json.dump(data, file, ensure_ascii=False)
             file.write("\n")
 
+
+def dumpMergedQA(data_id, generator, path, text, qaList, flag = "normal"):
+    length = len(generator.tokenizer.encode(text))
+    for item in qaList:
+        length += len(generator.tokenizer.encode(item))
+
+
+    data = {
+        "id": data_id,
+        "generator" : generator.model_name,
+        "flag": flag,
+        "qaList": qaList,
+        "length": length,
+        "text": text
+    }
+
+    with open(path, 'a') as file:
+        with file_lock:
+            json.dump(data, file, ensure_ascii=False)
+            file.write("\n")
+
+
 def dumpTree(data_id, path, sumTree):
     with open(path, 'a') as file:
         result = {"id": data_id}
@@ -83,7 +105,18 @@ def getPrompt(task, lang = 'en'):
         promptsLine = f.read()
         prompts = json.loads(promptsLine)
         return prompts[task]
+
+
+def getPromptFile(file, task, lang = 'en'):
+    prompt_path = file
+    if lang == 'zh':
+        prompt_path = file.replace('.json', '_zh.json')
+    with open(prompt_path) as f:
+        promptsLine = f.read()
+        prompts = json.loads(promptsLine)
+        return prompts[task]
     
+
 def getTemplate(model):
     with open('modelTemplate.json') as f:
         templatesLine = f.read()
@@ -157,3 +190,43 @@ def splitTextOnSentences(text: str, tokenizer, lang = 'en', max_chunk_length = 2
         chunks.append(current_chunk)
     
     return chunks
+
+
+def reportError(error):
+    with open("error_log.txt", 'a') as file:
+        with file_lock:
+            file.write(error)
+            file.write("\n")
+
+
+def extract_json(s):
+    i = s.index('{')
+    count = 1 
+    for j,c in enumerate(s[i+1:], start=i+1):
+        if c == '}':
+            count -= 1
+        elif c == '{':
+            count += 1
+        if count == 0:
+            break
+    assert(count == 0) 
+    json_str = s[i:j+1]
+    json_str = json_str.replace('\\\"', '\"')
+    json_list = json_str.split('\"')
+    json_final = []
+    flag = False
+    cnt = 0
+    for i, item in enumerate(json_list):
+        json_final.append(item)
+        if flag:
+            json_final.append('\\\"')
+        else:
+            json_final.append('\"')
+        if "response" in item:
+            flag = not flag
+            cnt = len(json_final)
+    json_final[-3] = "\""
+    json_final[-1] =""
+    json_final[cnt+1] = "\""
+    json_str = ''.join(json_final)
+    return json_str

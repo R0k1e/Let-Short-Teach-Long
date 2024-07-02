@@ -1,9 +1,10 @@
-from sumTree import SumTree
-from Generatorllm import Generatorllm
+from sumTree import SumTree, SumTree_TFIDF
+from Generatorllm import Generatorllm, GeneratorllmJson
 from openai import OpenAI
 import Generator_utils
 import concurrent.futures
 import os, json, time, argparse, queue
+import traceback
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 api_key = "s2l"
@@ -93,36 +94,47 @@ def pipeline_Level(data_id, model, llms, text, paths):
 
 def pipeline_LevelwithComp(data_id, model, llms, text, paths):
     llm= llms.get()
-    lang = Generator_utils.identify_language(text.split('\n')[0])
-    generator = Generatorllm(model, llm, lang)
-    sumTree = SumTree(text, generator, lang = lang, chunk_size = 2048)
-    sumTree.info()
-    Generator_utils.dumpTree(data_id, paths["treePath"], sumTree)
-    nodes = sumTree.getNodeEachLevel()
-    allNodes = sumTree.levelOrderTraversal()
-    if len(allNodes) < 5: # for the line 340 which is too short with only 4 nodes. 340 causes infinite loop
-        nodes = allNodes
-        while len(nodes) < 5:
-            node = sumTree.getRandomNode()
-            nodes.append(node)
-    else:
-        while len(nodes) < 5:
-            node = sumTree.getRandomNode()
-            if not any(checkEqualNode(node, n) for n in nodes):
+    try:
+        lang = Generator_utils.identify_language(text.split('\n')[0])
+        generator = GeneratorllmJson(model, llm, lang)
+        sumTree = SumTree(text, generator, lang = lang, chunk_size = 2048)
+        sumTree.info()
+        Generator_utils.dumpTree(data_id, paths["treePath"], sumTree)
+        nodes = sumTree.getNodeEachLevel()
+        allNodes = sumTree.levelOrderTraversal()
+        if len(allNodes) < 5: # for the line 340 which is too short with only 4 nodes. 340 causes infinite loop
+            nodes = allNodes
+            while len(nodes) < 5:
+                node = sumTree.getRandomNode()
                 nodes.append(node)
-    
-    for node in nodes:
-        questionMeta = generator.ask(node.getSummarisation())
-        question =questionMeta['question'] 
-        answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
-        Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node)
-        Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
-        questionMetaforOri = generator.askwithMeta(node.getSourceText(), questionMeta)
-        question =questionMetaforOri['question'] 
-        answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
-        Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node, flag = "askWithSourceText")
-        Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMetaforOri, answer, node, flag = "askWithSourceText")
-    llms.put(llm)
+        else:
+            while len(nodes) < 5:
+                node = sumTree.getRandomNode()
+                if not any(checkEqualNode(node, n) for n in nodes):
+                    nodes.append(node)
+        qaListNormal = []
+        qaListSource = []
+        for node in nodes:
+            questionMeta = generator.ask(node.getSummarisation())
+            question =questionMeta['question'] 
+            answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
+            Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node)
+            Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMeta, answer, node)
+            qaListNormal.append(question)
+            qaListNormal.append(answer)
+            questionMetaforOri = generator.askwithMeta(node.getSourceText(), questionMeta)
+            question =questionMetaforOri['question'] 
+            answer, answerList = generator.pure_refine(sumTree.getTextArray(), question)
+            Generator_utils.dumpIntermediate(data_id, paths["mapPath"], question, answerList, node, flag = "askWithSourceText")
+            Generator_utils.dump(data_id, generator, paths["dataPath"], sumTree.getText(), questionMetaforOri, answer, node, flag = "askWithSourceText")
+            qaListSource.append(question)
+            qaListSource.append(answer)
+        Generator_utils.dumpMergedQA(data_id, generator, paths["qaPath"], sumTree.getText(), qaListNormal)
+        Generator_utils.dumpMergedQA(data_id, generator, paths["qaPath"], sumTree.getText(), qaListSource, flag= "askWithSourceText")
+    except Exception as e:
+        raise e
+    finally:
+        llms.put(llm)
 
 
 # no split
@@ -175,10 +187,12 @@ def constructPath(data_path):
     dataPath = os.path.join(path, "longContext.jsonl")
     mapPath = os.path.join(path, "refine.jsonl")
     treePath = os.path.join(path, "tree.jsonl")
-    paths = {"dataPath" : dataPath, "mapPath" : mapPath, "treePath" : treePath}
+    qaPath = os.path.join(path, "LongQA.jsonl")
+    paths = {"dataPath" : dataPath, "mapPath" : mapPath, "treePath" : treePath, "qaPath": qaPath}
     Generator_utils.clear(dataPath)
     Generator_utils.clear(mapPath)
     Generator_utils.clear(treePath)
+    Generator_utils.clear(qaPath)
     return paths
 
 
@@ -191,6 +205,7 @@ def handle_exceptions(futures, model, llms, data_file, paths):
         except Exception as e:
             with open("error_log.txt", "a") as file:
                 file.write(f"id:{data_id}Caught an exception: {e}\n")
+                file.write(traceback.format_exc())
             err_tasks.append(future)
     
     while len(err_tasks) > 0:
@@ -207,7 +222,7 @@ def handle_exceptions(futures, model, llms, data_file, paths):
             except Exception as e:
                 with open("error_log.txt", "a") as file:
                     file.write(f"id:{data_id}Caught an exception: {e}\n")
-            
+                
 
 def delete_backoff(id, paths):
     for path in paths.values():
@@ -224,29 +239,23 @@ def delete_backoff(id, paths):
 
 
 def singleThreadDispatcher(model, data_path):
-    llm = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-        )
+    llm = OpenAI()
     llms = queue.Queue()
     llms.put(llm)
     paths = constructPath(data_path)
     with open(data_path, 'r') as file:
         for i, line in enumerate(file):
-            obj = json.loads(line)
-            text = obj['text']
-            
-            pipeline_LevelwithComp(i+1, model, llms, text, paths)
-            
+            if i+1 == 59 or i+1 ==78:
+                obj = json.loads(line)
+                text = obj['text']
+                pipeline_LevelwithComp(i+1, model, llms, text, paths)
+                
                 
 
 def dispatcher(model, data_path, num_gpus = 1):
     llms = queue.Queue()
     for i in range(num_gpus):
-        llm = OpenAI(
-            api_key=api_key,
-            base_url = f"http://127.0.0.1:{3660+i}/v1",
-        )
+        llm = OpenAI()
         llms.put(llm)
     
     paths = constructPath(data_path)
@@ -258,13 +267,48 @@ def dispatcher(model, data_path, num_gpus = 1):
             for i, line in enumerate(file):
                 obj = json.loads(line)
                 text = obj['text']
-                future = executor.submit(pipeline_Level, i+1, model, llms, text, paths)
+                future = executor.submit(pipeline_LevelwithComp, i+1, model, llms, text, paths)
                 futures[future] = i+1
-                if (i + 1) % (10*num_gpus) == 0:
+                if (i + 1) % (3*num_gpus) == 0:
+                    concurrent.futures.wait(list(futures.keys()))
                     handle_exceptions(futures, model, llms, file, paths)
                     futures = {}
             handle_exceptions(futures, model, llms, file, paths)
-            concurrent.futures.wait(futures)
+            concurrent.futures.wait(list(futures.keys()))
+
+
+def new_dispatcher(model, data_path, num_gpus = 1):
+    llms = queue.Queue()
+    for i in range(num_gpus):
+        llm = OpenAI()
+        llms.put(llm)
+    
+    paths = constructPath(data_path)
+    
+    #lang
+    with concurrent.futures.ThreadPoolExecutor(max_workers = num_gpus) as executor:
+        futures = {}
+        with open(data_path, 'r') as file:
+            for i, line in enumerate(file):
+                obj = json.loads(line)
+                text = obj['text']
+                future = executor.submit(pipeline_LevelwithComp, i+1, model, llms, text, paths)
+                futures[future] = i+1
+        while True:
+            new_futures = {}
+            for future in futures.keys():
+                try:
+                    result = future.result()
+                except Exception as e:
+                    with open("error_log.txt", "a") as file:
+                        file.write(f"id:{futures[future]}Caught an exception: {e}\n")
+                        file.write(traceback.format_exc())
+                    new_future = executor.submit(pipeline_LevelwithComp, futures[future], model, llms, text, paths)
+                    new_futures[new_future] = futures[future]
+            futures = new_futures
+            if len(futures) == 0:
+                break
+
 
 
 def checkFailedTree(data_path):
@@ -402,10 +446,10 @@ if __name__ == "__main__":
         if args.resume_path is not None:
             min_id = min(checkFailedData(args.resume_path, target_num=target_num), checkFailedRefine(args.resume_path,target_num=target_num), checkFailedTree(args.resume_path))
             paths = clearTargetFiles(args.resume_path, min_id)
-            resumeDispatcher(model, data_path, paths, min_id, num_gpus = 4)
+            resumeDispatcher(model, data_path, paths, min_id, num_gpus = 100)
             # resumeSingleThread(model, data_path, paths, min_id)
         else:
             raise ValueError("Please provide the path to the data file")
     else:
         # singleThreadDispatcher(model, data_path)
-        dispatcher(model, data_path, num_gpus = 4)
+        singleThreadDispatcher(model, data_path)

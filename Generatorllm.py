@@ -11,7 +11,7 @@ import jieba
 import json
 import re
 
-maximum_tokens = 4*1024
+maximum_tokens = 128*1024
 
 # class GenerateFailedException(Exception):
 #     def __init__(self, task):
@@ -51,7 +51,8 @@ class Generatorllm:
     def formCompletion(self, prompt):
         length = self.checkLength(prompt)
         while self.checkLength(prompt) > maximum_tokens-20:
-            prompt = prompt[:-10]
+            index = len(prompt)//2
+            prompt = prompt[:index] + prompt[index+10:]
         length = self.checkLength(prompt)
         # result = self.client.completions.create(model = self.model, prompt = prompt, max_tokens = maximum_tokens-length)
         # result = result.choices[0].text
@@ -260,22 +261,31 @@ class Generatorllm:
             words = nltk.tokenize.word_tokenize(text)
         words = set(words)
         words = [word for word in words if word not in stops]
-        finalWords = []
-        for i in range(len(words)//word_num):
-            tempWords = words[i*word_num:(i+1)*word_num]
-            context = '['
-            for word in tempWords:
-                context += word + ', '
-            context = context[:-2] + ']'
-            prompt = self.formPrompt("wordsSift")
-            prompt = prompt.format(context = context)
-            result = self.formCompletion(prompt)
-            result = result.replace("\n", "")
-            siftedWords = re.findall(r'\{.*?\}', result)
-            tempWords = json.loads(siftedWords[0])["sifted_words"]
-            finalWords += tempWords
-        finalWords = list(set(finalWords))
-        return finalWords
+        max_retries = 5
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                finalWords = []
+                for i in range(len(words)//word_num):
+                    tempWords = words[i*word_num:(i+1)*word_num]
+                    context = '['
+                    for word in tempWords:
+                        context += word + ', '
+                    context = context[:-2] + ']'
+                    prompt = self.formPrompt("wordsSift")
+                    prompt = prompt.format(context = context)
+                    result = self.formCompletion(prompt)
+                    result = result.replace("\n", "")
+                    siftedWords = re.findall(r'\{.*?\}', result)
+                    tempWords = json.loads(siftedWords[0])["sifted_words"]
+                    finalWords += tempWords
+                finalWords = list(set(finalWords))
+                return finalWords
+            except Exception as e:
+                print(e)
+                retry_count += 1
+                continue
+        return None
 
     # decreasing order
     def sentenceScore(self, chunks, siftedWords):
@@ -303,7 +313,7 @@ class Generatorllm:
         return chunk_scores
 
 
-    def referenceConstruction(self, text):
+    def referenceConstruction(self, text, sent_score):
         if self.lang == 'zh':
             sentenses = Generator_utils.sent_tokenize_zh(text)
         else:
@@ -316,12 +326,31 @@ class Generatorllm:
     
         prompt = self.formPrompt("referenceConstruction")
         prompt = prompt.format(context = context)
-        references = self.formCompletion(prompt)
-        
-        return references
+        max_retries = 5
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                references_ori = self.formCompletion(prompt)
+                
+                references_ori = references_ori.replace("\n", "")
+                references_ori = re.findall(r'\{.*?\}', references_ori)
+                references_ori = json.loads(references_ori[0])
+                sent_scores = []
+                for sent, references in references_ori.items():
+                    temp_score = {"sent": sent, "score": 0}
+                    for reference in references:
+                        temp_score["score"] += sent_score[int(reference)-1]["score"]
+                    sent_scores.append(temp_score)
+                return sent_scores
+            except Exception as e:
+                print(e)
+                retry_count += 1
+                continue
+        return None
+    
     
 
-    def referenceConstructionwithRefine(self, previous: str, text: str):
+    def referenceConstructionwithRefine(self, previous, text, sent_score):
         if self.lang == 'zh':
             sentenses = Generator_utils.sent_tokenize_zh(text)
         else:
@@ -334,25 +363,180 @@ class Generatorllm:
     
         prompt = self.formPrompt("referenceConstructionwithRefine")
         prompt = prompt.format(previousSummary = previous, context = context)
-        references = self.formCompletion(prompt)
+        max_retries = 5
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                references_ori = self.formCompletion(prompt)
+                
+                references_ori = references_ori.replace("\n", "")
+                references_ori = re.findall(r'\{.*?\}', references_ori)
+                references_ori = json.loads(references_ori[0])
+                sent_scores = []
+                for sent, references in references_ori.items():
+                    temp_score = {"sent": sent, "score": 0}
+                    for reference in references:
+                        temp_score["score"] += sent_score[int(reference)-1]["score"]
+                    sent_scores.append(temp_score)
+
+                return sent_scores
+            except Exception as e:
+                print(e)
+                retry_count += 1
+                continue
+        return None
+   
+
+    def askwithImportance(self, context):
+        random.seed(time.time())
+        questionCategories = Generator_utils.getPrompt("questionCategory", self.lang)
+        questionCategoryKey = random.choice(list(questionCategories.keys()))
+        questionCategory = questionCategories[questionCategoryKey]
+        comprehensions = Generator_utils.getPrompt("comprehension", self.lang)
+        comprehensionKey = random.choice(list(comprehensions.keys()))
+        comprehension = comprehensions[comprehensionKey]
+        prompt = self.formPrompt("askwithImportance")
+        prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
+        question = self.formCompletion(prompt)
+        question = question.strip()
+        return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
         
-        return references
 
-
-    def referenceExtraction(self, text, sent_score):
-        # text = "The authors present an open-source multilingual supervised fine-tuning dataset to improve the multilingual abilities of large language models (LLMs) (reference: 3). They introduce a knowledge-grounded data augmentation approach and demonstrate the strong cross-lingual transfer capabilities of modern LLMs, leading to substantial pruning of language-agnostic supervised fine-tuning data without performance degradation (reference: 5, 6, 7). The resulting UltraLink dataset comprises approximately 1 million samples across five languages and outperforms several representative baselines across various tasks (reference: 8, 9). The authors also propose a new approach to construct multilingual supervised fine-tuning data, emphasizing higher cultural diversity and pruned data volume (reference: 23, 24, 25, 28, 30). They engage in automatically generating multilingual supervised fine-tuning data and emphasize the importance of considering cultural diversity and integrating language-agnostic universal data (reference: 33, 34). The authors propose a data construction framework involving two pipelines and employ a knowledge-grounded data augmentation method based on Wikipedia dumps to improve cultural diversity (reference: 35, 37, 39, 40, 41). They use prompts to generate multi-turn dialogues conditioned on provided cultural backgrounds and dialogue history (reference: 49, 50, 51, 57, 58). The authors also propose two types of subsequent questions to improve the diversity of constructed dialogues (reference: 82, 83, 84)."
-
-        result = text.replace("\n", "")
-        references_ori = re.findall(r'\{.*?\}', result)
-        references_ori = json.loads(references_ori[0])
-        sent_scores = []
-        for sent, references in references_ori.items():
-            temp_score = {"sent": sent, "score": 0}
-            for reference in references:
-                temp_score["score"] += sent_score[int(reference)-1]["score"]
-            sent_scores.append(temp_score)
-        return sent_scores
+class GeneratorllmJson(Generatorllm):
+    def __init__(
+            self,
+            model,
+            client,
+            lang = 'en'
+        ):
+        super().__init__(model, client, lang)
     
 
+    def formPrompt(self, task):
+        modelTemplate = Generator_utils.getTemplate(self.model_name)
+        prompt = modelTemplate.format(user_message = Generator_utils.getPromptFile("promptTemplateJson.json", task, self.lang))
+        return prompt
+    
 
+    def getCompletion(self, prompt):
+        while self.checkLength(prompt) > maximum_tokens-20:
+            index = len(prompt)//2
+            prompt = prompt[:index] + prompt[index+10:]
+        length = self.checkLength(prompt)
+        completion = self.client.chat.completions.create(
+            model=self.model, 
+            messages= [
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+        )
+        result = completion.choices[0].message.content
         
+        with open("debugOutput.txt", "a") as f:
+            f.write("##PROMPT##\n")
+            f.write(prompt+"\n")
+            f.write("##LENGTH##\n")
+            f.write(str(self.checkLength(prompt))+"\n")
+            f.write("##RESPONSE##\n")
+            f.write(result+"\n")
+            f.write("##LENGTH##\n")
+            f.write(str(self.checkLength(result))+"\n")
+        return result
+    
+
+    def formCompletion(self, prompt):
+        max_retries = 5
+        retry_count = 0
+        record = ""
+        while retry_count < max_retries:
+            try:
+                result = self.getCompletion(prompt)
+                record = result
+                result = result.replace("\n", "")
+                result = Generator_utils.extract_json(result)
+                result = json.loads(result)
+                return result
+            except Exception as e:
+                Generator_utils.reportError("formCompletion"+"have tried "+str(retry_count)+": "+str(e))
+                Generator_utils.reportError("ERROR " +record)
+                retry_count += 1
+                continue
+        return None
+    
+
+    def summary(self, text: str, word_count):
+        prompt = self.formPrompt("summary")
+        prompt = prompt.format(context=text, word_count=word_count)
+        result = self.formCompletion(prompt)["response"]
+        return result
+    
+
+    def summaryWithRefine(self, previous: str, text: str, word_count):
+        prompt = self.formPrompt("summaryWithRefine")
+        prompt = prompt.format(previousSummary=previous, context=text, word_count=word_count)
+        result = self.formCompletion(prompt)["response"]
+        return result
+    
+
+    def ask(self, context) -> dict[str]:
+        random.seed(time.time())
+        questionCategories = Generator_utils.getPromptFile("promptTemplateJson.json", "questionCategory", self.lang)
+        questionCategoryKey = random.choice(list(questionCategories.keys()))
+        questionCategory = questionCategories[questionCategoryKey]
+        comprehensions = Generator_utils.getPromptFile("promptTemplateJson.json", "comprehension", self.lang)
+        comprehensionKey = random.choice(list(comprehensions.keys()))
+        comprehension = comprehensions[comprehensionKey]
+        prompt = self.formPrompt("ask")
+        prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
+        question = self.formCompletion(prompt)["response"]
+        question = question.strip()
+        return {"question":question, "questionCategory": questionCategoryKey, "comprehension":comprehensionKey}
+    
+
+    def askwithMeta(self, context, questionMeta: dict) -> dict[str]:
+        questionCategories = Generator_utils.getPromptFile("promptTemplateJson.json", "questionCategory", self.lang)
+        questionCategory = questionCategories[questionMeta["questionCategory"]]
+        comprehensions = Generator_utils.getPromptFile("promptTemplateJson.json", "comprehension", self.lang)
+        comprehension = comprehensions[questionMeta["comprehension"]]
+        prompt = self.formPrompt("ask")
+        prompt = prompt.format(questionCategory=questionCategory, comprehension=comprehension, context=context)
+        question = self.formCompletion(prompt)["response"]
+        question = question.strip()
+        return {"question":question, "questionCategory": questionMeta["questionCategory"], "comprehension":questionMeta["comprehension"]}
+    
+
+    def pure_refine(self, context: list[str], question):
+        result = ""
+        answerList = {"generator": self.model_name}
+        for i in range(len(context)):
+            max_retries = 5
+            retry_count = 0
+            record = ""
+            while retry_count < max_retries:
+                try:
+                    if i == 0:
+                        prompt = self.formPrompt("firstAnswer")
+                        prompt = prompt.format(context=context[i], question=question)
+                        result = self.formCompletion(prompt)["response"]
+                    else:
+                        prompt = self.formPrompt("followingAnswer")
+                        prompt = prompt.format(context=context[i], answer=result, question=question)
+                        jsonObj = self.formCompletion(prompt)
+                        if jsonObj["canAnswer"] == False:
+                            result = result
+                        else:
+                            result = jsonObj["response"]
+                    answerList[f"Intermediate input {i}"] = context[i]
+                    answerList[f"Intermediate result {i}"] = result
+                    break
+                except Exception as e:
+                    Generator_utils.reportError("pure_refine"+"have tried "+str(retry_count)+": "+str(e))
+                    Generator_utils.reportError("ERROR " +record)
+                    retry_count += 1
+                    continue
+        return result, answerList
+    
+
+    

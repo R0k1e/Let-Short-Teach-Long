@@ -89,6 +89,20 @@ class SumTreeNode:
     def setTree(self, tree):
         self.__tree = tree
 
+    
+    def getSummarywithImportance(self):
+        sentScores = sorted(self.sentScores, key=lambda x: x["score"], reverse=True)
+        top1 = sentScores[0]["sent"]
+        summary = ""
+        for item in sentScores:
+            sent = item["sent"]
+            if sent == top1:
+                summary += f"*{sent} *"
+            else:
+                summary += f"{sent} "
+        return summary
+
+
 class SumTree:
     def __init__(self, text: str, summariser, chunk_size=2*1024, children_group_capacity=3, lang = 'en'):
         # self.text = text # save memory -- for efficiency
@@ -373,21 +387,14 @@ class SumTree_TFIDF(SumTree):
             
             child = SumTreeNode(self.summariser)
             child.setTree(self)
-            summary = ""
             if i == 0:
                 self.summarySize = self.getSummarySize(chunk)
-                references = self.summariser.referenceConstruction(chunk)
-                child.sentScores = self.summariser.referenceExtraction(references, sentScores[i])
-                for item in child.sentScores:
-                    summary += item["sent"]
-                    summary += " "
+                child.sentScores = self.summariser.referenceConstruction(chunk, sentScores[i])
+                summary = self.formSummary(child.sentScores)
                 child.setSummarisation(summary)
             else: 
-                references = self.summariser.referenceConstructionwithRefine(children[i-1].getSummarisation(), chunk)
-                child.sentScores = self.summariser.referenceExtraction(references, sentScores[i])
-                for item in child.sentScores:
-                    summary += item["sent"]
-                    summary += " "
+                child.sentScores = self.summariser.referenceConstructionwithRefine(children[i-1].getSummarisation(), chunk, sentScores[i])
+                summary = self.formSummary(child.sentScores)
                 child.setSummarisation(summary)
             child.getSourceTextArr().append(i)
             children.append(child)
@@ -419,12 +426,17 @@ class SumTree_TFIDF(SumTree):
                     child.setParent(group)
                 
                 text=group.getChildrenSummarisation()
-                references = self.summariser.referenceConstruction(text)
-                summary = ""
-                group.sentScores = self.summariser.referenceExtraction(references, group.getChildrenSentScores())
-                for item in group.sentScores:
-                    summary += item["sent"]
-                    summary += " "
+                group.sentScores = self.summariser.referenceConstruction(text, group.getChildrenSentScores())
+                summary = self.formSummary(group.sentScores)
                 group.setSummarisation(summary)
                 parents.append(group)
         return parents
+
+
+    def formSummary(self, sentScores):
+        summary = ""
+        for item in sentScores:
+            sent = item["sent"]
+            summary += f"{sent} "
+        return summary
+    
